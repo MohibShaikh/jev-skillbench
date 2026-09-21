@@ -1,0 +1,18 @@
+{
+  "arm": "llm",
+  "backend": null,
+  "model": "google/gemini-2.5-flash",
+  "timestamp": "20260921T111314Z",
+  "git_sha": "80698e7",
+  "dataset": "data/MalSkillBench/Dataset/Skills",
+  "per_class": null,
+  "limit": null,
+  "only_generated": false,
+  "include_behavior": true,
+  "max_total_tokens": 30000,
+  "max_file_tokens": 12000,
+  "policy_version": 3,
+  "ids_from": "results/samples/band_005_050.jsonl",
+  "n_planned": 171,
+  "n_resumed": 0
+}

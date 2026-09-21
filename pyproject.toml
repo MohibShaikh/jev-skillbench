@@ -41,6 +41,7 @@ ignore = ["E501"]
 "src/jev_skillbench/cli.py" = ["B008"]
 "src/jev_skillbench/detect.py" = ["BLE001"]
 "src/jev_skillbench/llm.py" = ["BLE001"]
+"src/jev_skillbench/claude_cli.py" = ["BLE001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

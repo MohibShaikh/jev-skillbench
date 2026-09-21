@@ -12,6 +12,7 @@ from pathlib import Path
 import typer
 from dotenv import load_dotenv
 
+from .claude_cli import DEFAULT_CLAUDE_MODEL, run_claude_cli
 from .dataset import (
     DEFAULT_MAX_FILE_TOKENS,
     DEFAULT_MAX_TOTAL_TOKENS,
@@ -135,11 +136,12 @@ def run(
     max_file_tokens: int = typer.Option(DEFAULT_MAX_FILE_TOKENS),
     max_output_tokens: int = typer.Option(300, help="LLM arm output cap; output is the expensive side."),
     reasoning_effort: str = typer.Option("", help="LLM arm reasoning effort, e.g. minimal; empty omits it."),
+    effort: str = typer.Option("", help="Claude Code effort level: low, medium, high, xhigh, max."),
     resume: bool = typer.Option(True),
 ) -> None:
     """Run one detector arm. Appends to <run_dir>/<arm>.jsonl and resumes by default."""
-    if arm not in {"jev", "llm"}:
-        raise typer.BadParameter("arm must be jev or llm")
+    if arm not in {"jev", "llm", "claude"}:
+        raise typer.BadParameter("arm must be jev, llm, or claude")
     rd = _run_dir(run_dir, arm)
     out = rd / f"{arm}.jsonl"
 
@@ -165,6 +167,8 @@ def run(
         resolved_model = default_model_for(resolved)
     if arm == "llm" and not resolved_model:
         resolved_model = os.environ.get("OPENAI_MODEL", "")
+    if arm == "claude" and not resolved_model:
+        resolved_model = DEFAULT_CLAUDE_MODEL
 
     _write_meta(
         rd,
@@ -182,6 +186,7 @@ def run(
             "max_total_tokens": max_total_tokens,
             "max_file_tokens": max_file_tokens,
             "policy_version": POLICY_VERSION,
+            "effort": effort or None,
             "ids_from": str(ids_from) if ids_from else None,
             "n_planned": len(items),
             "n_resumed": len(already),
@@ -211,6 +216,15 @@ def run(
         if resolved in {"vercel", "openrouter"}:
             kwargs["max_retries"] = max_retries
         run_jev_sync(items, backend=resolved, **kwargs)
+    elif arm == "claude":
+        run_claude_cli(
+            items,
+            model=resolved_model,
+            sink=sink,
+            include_behavior=not no_behavior,
+            max_retries=max_retries,
+            effort=effort or None,
+        )
     else:
         _require("llm", "OPENAI_API_KEY")
         llm_kwargs = {

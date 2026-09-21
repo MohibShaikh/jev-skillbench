@@ -86,6 +86,7 @@ class Record:
     cost_usd: float | None = None
     state_tokens: int = 0
     truncated: bool = False
+    models: str | None = None
     error: str | None = None
 
 

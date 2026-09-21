@@ -1,0 +1,214 @@
+{
+  "arm": "claude",
+  "model": "claude-opus-5",
+  "threshold": 0.5,
+  "overall": {
+    "tp": 94,
+    "fp": 4,
+    "tn": 67,
+    "fn": 4,
+    "n": 169,
+    "n_errors": 35,
+    "recall": 0.9591836734693877,
+    "fpr": 0.056338028169014086,
+    "precision": 0.9591836734693877,
+    "f1": 0.9591836734693877,
+    "accuracy": 0.9526627218934911
+  },
+  "by_vector": {
+    "wild": {
+      "tp": 42,
+      "fp": 0,
+      "tn": 0,
+      "fn": 2,
+      "n": 44,
+      "n_errors": 0,
+      "recall": 0.9545454545454546,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.9767441860465117,
+      "accuracy": 0.9545454545454546
+    },
+    "pi": {
+      "tp": 35,
+      "fp": 0,
+      "tn": 0,
+      "fn": 1,
+      "n": 36,
+      "n_errors": 0,
+      "recall": 0.9722222222222222,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.9859154929577464,
+      "accuracy": 0.9722222222222222
+    },
+    "ci": {
+      "tp": 12,
+      "fp": 0,
+      "tn": 0,
+      "fn": 1,
+      "n": 13,
+      "n_errors": 0,
+      "recall": 0.9230769230769231,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.9600000000000001,
+      "accuracy": 0.9230769230769231
+    },
+    "mixed": {
+      "tp": 5,
+      "fp": 0,
+      "tn": 0,
+      "fn": 0,
+      "n": 5,
+      "n_errors": 0,
+      "recall": 1.0,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0
+    }
+  },
+  "by_truncation": {
+    "truncated": {
+      "tp": 0,
+      "fp": 0,
+      "tn": 6,
+      "fn": 0,
+      "n": 6,
+      "n_errors": 0,
+      "recall": null,
+      "fpr": 0.0,
+      "precision": null,
+      "f1": null,
+      "accuracy": 1.0
+    },
+    "intact": {
+      "tp": 94,
+      "fp": 4,
+      "tn": 61,
+      "fn": 4,
+      "n": 163,
+      "n_errors": 35,
+      "recall": 0.9591836734693877,
+      "fpr": 0.06153846153846154,
+      "precision": 0.9591836734693877,
+      "f1": 0.9591836734693877,
+      "accuracy": 0.950920245398773
+    }
+  },
+  "vector_label_accuracy": 0.8518518518518519,
+  "brier": 0.04049704142011835,
+  "ece": 0.07124260355029594,
+  "reliability": [
+    {
+      "lo": 0.0,
+      "hi": 0.1,
+      "n": 24,
+      "mean_confidence": 0.049999999999999996,
+      "empirical_rate": 0.0
+    },
+    {
+      "lo": 0.1,
+      "hi": 0.2,
+      "n": 40,
+      "mean_confidence": 0.13625,
+      "empirical_rate": 0.025
+    },
+    {
+      "lo": 0.2,
+      "hi": 0.3,
+      "n": 0,
+      "mean_confidence": null,
+      "empirical_rate": null
+    },
+    {
+      "lo": 0.3,
+      "hi": 0.4,
+      "n": 6,
+      "mean_confidence": 0.3499999999999999,
+      "empirical_rate": 0.3333333333333333
+    },
+    {
+      "lo": 0.4,
+      "hi": 0.5,
+      "n": 1,
+      "mean_confidence": 0.4,
+      "empirical_rate": 1.0
+    },
+    {
+      "lo": 0.5,
+      "hi": 0.6,
+      "n": 1,
+      "mean_confidence": 0.55,
+      "empirical_rate": 0.0
+    },
+    {
+      "lo": 0.6,
+      "hi": 0.7,
+      "n": 2,
+      "mean_confidence": 0.625,
+      "empirical_rate": 1.0
+    },
+    {
+      "lo": 0.7,
+      "hi": 0.8,
+      "n": 10,
+      "mean_confidence": 0.745,
+      "empirical_rate": 0.8
+    },
+    {
+      "lo": 0.8,
+      "hi": 0.9,
+      "n": 17,
+      "mean_confidence": 0.8352941176470587,
+      "empirical_rate": 0.9411764705882353
+    },
+    {
+      "lo": 0.9,
+      "hi": 1.0,
+      "n": 68,
+      "mean_confidence": 0.9699999999999999,
+      "empirical_rate": 1.0
+    }
+  ],
+  "latency": {
+    "n": 204,
+    "p50_ms": 11253.310757998406,
+    "p95_ms": 38595.99700400213,
+    "mean_ms": 15043.391182284347
+  },
+  "tokens": {
+    "input_tokens": 4412668,
+    "output_tokens": 12198,
+    "n_with_usage": 169,
+    "cost_usd_total": 19.5568805
+  },
+  "cost_per_1k_skills": 115.72118639053254,
+  "intervals": {
+    "recall": {
+      "point": 0.9591836734693877,
+      "lo": 0.9158878504672897,
+      "hi": 0.9902912621359223,
+      "n_boot": 1000
+    },
+    "fpr": {
+      "point": 0.056338028169014086,
+      "lo": 0.012987012987012988,
+      "hi": 0.11267605633802817,
+      "n_boot": 1000
+    },
+    "brier": {
+      "point": 0.04049704142011835,
+      "lo": 0.02505838150289017,
+      "hi": 0.05855609756097561,
+      "n_boot": 1000
+    },
+    "ece": {
+      "point": 0.07124260355029594,
+      "lo": 0.059166666666666694,
+      "hi": 0.10311764705882355,
+      "n_boot": 1000
+    }
+  }
+}
