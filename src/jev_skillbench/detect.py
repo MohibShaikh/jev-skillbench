@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import random
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
@@ -35,6 +36,34 @@ OPENROUTER_MODEL = "~typesafe/jev-latest"
 OPENROUTER_BASE = "https://openrouter.ai/api"
 
 JEV_USD_PER_INPUT_TOKEN = 0.042 / 1_000_000
+
+RETRY_STATUSES = {429, 500, 502, 503, 504, 529}
+
+
+async def _post_with_retry(
+    http: httpx.AsyncClient,
+    url: str,
+    api_key: str,
+    body: dict,
+    max_retries: int,
+    base_delay: float = 1.0,
+    max_delay: float = 30.0,
+) -> httpx.Response:
+    delay = base_delay
+    response: httpx.Response | None = None
+    for attempt in range(max_retries + 1):
+        response = await http.post(url, headers={"Authorization": f"Bearer {api_key}"}, json=body)
+        if response.status_code not in RETRY_STATUSES or attempt == max_retries:
+            return response
+        header = response.headers.get("retry-after")
+        try:
+            wait = float(header) if header else delay
+        except ValueError:
+            wait = delay
+        await asyncio.sleep(min(wait, max_delay) + random.uniform(0, 0.5))
+        delay = min(delay * 2, max_delay)
+    assert response is not None
+    return response
 
 
 @dataclass
@@ -163,6 +192,7 @@ async def _run_jev_http(
     timeout: float,
     cost_from_tokens: bool,
     sink: Callable[[Record], None] | None = None,
+    max_retries: int = 5,
 ) -> list[Record]:
     questions = _wire(skill_questions(include_behavior=include_behavior))
     sem = asyncio.Semaphore(concurrency)
@@ -175,10 +205,12 @@ async def _run_jev_http(
             async with sem:
                 start = time.perf_counter()
                 try:
-                    resp = await http.post(
+                    resp = await _post_with_retry(
+                        http,
                         url,
-                        headers={"Authorization": f"Bearer {api_key}"},
-                        json={"model": model, "state": item.state(), "questions": questions},
+                        api_key,
+                        {"model": model, "state": item.state(), "questions": questions},
+                        max_retries,
                     )
                     payload = resp.json()
                     if resp.status_code >= 400 or "error" in payload:
@@ -216,6 +248,7 @@ async def run_jev_vercel(
     include_behavior: bool = True,
     timeout: float = 90.0,
     sink: Callable[[Record], None] | None = None,
+    max_retries: int = 5,
 ) -> list[Record]:
     base_url = (base_url or os.environ.get("VERCEL_BASE_URL") or VERCEL_BASE).rstrip("/")
     api_key = (
@@ -235,6 +268,7 @@ async def run_jev_vercel(
         timeout=timeout,
         cost_from_tokens=True,
         sink=sink,
+        max_retries=max_retries,
     )
 
 
@@ -247,6 +281,7 @@ async def run_jev_openrouter(
     include_behavior: bool = True,
     timeout: float = 90.0,
     sink: Callable[[Record], None] | None = None,
+    max_retries: int = 5,
 ) -> list[Record]:
     base_url = (base_url or os.environ.get("OPENROUTER_BASE_URL") or OPENROUTER_BASE).rstrip("/")
     api_key = api_key or os.environ.get("OPENROUTER_API_KEY")
@@ -262,6 +297,7 @@ async def run_jev_openrouter(
         timeout=timeout,
         cost_from_tokens=False,
         sink=sink,
+        max_retries=max_retries,
     )
 
 

@@ -123,6 +123,7 @@ def run(
     limit: int = typer.Option(0, help="Raw cap; ignored when per_class is set."),
     ids_from: Path = typer.Option(None, help="Restrict to ids present in this records file."),
     concurrency: int = typer.Option(16),
+    max_retries: int = typer.Option(5, help="Retries per call on 429/5xx for HTTP Jev backends."),
     only_generated: bool = typer.Option(False),
     no_behavior: bool = typer.Option(False, help="Drop the B1..B15 question."),
     max_total_tokens: int = typer.Option(DEFAULT_MAX_TOTAL_TOKENS),
@@ -200,6 +201,7 @@ def run(
             concurrency=concurrency,
             include_behavior=not no_behavior,
             sink=sink,
+            max_retries=max_retries,
         )
     else:
         _require("llm", "OPENAI_API_KEY")
