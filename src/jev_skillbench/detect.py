@@ -1,11 +1,16 @@
 """Run detectors over benchmark items and persist raw per-sample records.
 
-Two Jev transports:
+Three Jev transports:
 
 - `sdk`: the TypeSafe Python SDK against api.typesafe.ai, needs TYPESAFE_API_KEY.
-- `openrouter`: the `/api/alpha/decisions` endpoint, needs OPENROUTER_API_KEY.
-  Jev is a decisions model there rather than a chat model, so the request and
-  response bodies match TypeSafe's `systemone` shape, and usage includes cost.
+- `vercel`: Vercel AI Gateway's TypeSafe-compatible route at
+  https://ai-gateway.vercel.sh/typesafe/v1/systemone, model `typesafe-ai/jev`,
+  needs AI_GATEWAY_API_KEY or VERCEL_API_KEY.
+- `openrouter`: OpenRouter's `/api/alpha/decisions` endpoint, needs
+  OPENROUTER_API_KEY with purchased credits.
+
+Jev bills input at $42 per billion tokens ($0.042 per million); output is free.
+The vercel and sdk transports compute cost from input tokens accordingly.
 """
 
 from __future__ import annotations
@@ -14,7 +19,7 @@ import asyncio
 import json
 import os
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -24,8 +29,12 @@ from .dataset import SkillItem
 from .questions import skill_questions
 
 DEFAULT_MODEL = "jev-1.13.0"
+VERCEL_MODEL = "typesafe-ai/jev"
+VERCEL_BASE = "https://ai-gateway.vercel.sh/typesafe"
 OPENROUTER_MODEL = "~typesafe/jev-latest"
 OPENROUTER_BASE = "https://openrouter.ai/api"
+
+JEV_USD_PER_INPUT_TOKEN = 0.042 / 1_000_000
 
 
 @dataclass
@@ -92,7 +101,20 @@ def _fill(
 
 
 def _wire(questions: Mapping) -> dict:
-    return {k: (v.model_dump(exclude_none=True) if hasattr(v, "model_dump") else v) for k, v in questions.items()}
+    return {
+        k: (v.model_dump(exclude_none=True) if hasattr(v, "model_dump") else v)
+        for k, v in questions.items()
+    }
+
+
+async def _drain(tasks: list, sink: Callable[[Record], None] | None) -> list[Record]:
+    out: list[Record] = []
+    for coro in asyncio.as_completed(tasks):
+        rec = await coro
+        out.append(rec)
+        if sink is not None:
+            sink(rec)
+    return out
 
 
 async def run_jev_sdk(
@@ -101,6 +123,7 @@ async def run_jev_sdk(
     concurrency: int = 16,
     include_behavior: bool = True,
     timeout: float = 90.0,
+    sink: Callable[[Record], None] | None = None,
 ) -> list[Record]:
     from typesafe_sdk import AsyncTypeSafeClient, RetryPolicy
 
@@ -120,13 +143,99 @@ async def run_jev_sdk(
                 return rec
             rec.latency_ms = (time.perf_counter() - start) * 1000
             answers = {k: v.model_dump() for k, v in response.answers.items()}
-            _fill(rec, response.model, answers, response.usage.input_tokens, response.usage.output_tokens, None)
+            cost = (response.usage.input_tokens or 0) * JEV_USD_PER_INPUT_TOKEN
+            _fill(rec, response.model, answers, response.usage.input_tokens, response.usage.output_tokens, cost)
             return rec
 
     try:
-        return list(await asyncio.gather(*(one(i) for i in items)))
+        return await _drain([asyncio.create_task(one(i)) for i in items], sink)
     finally:
         await client.aclose()
+
+
+async def _run_jev_http(
+    items: list[SkillItem],
+    url: str,
+    model: str,
+    api_key: str,
+    concurrency: int,
+    include_behavior: bool,
+    timeout: float,
+    cost_from_tokens: bool,
+    sink: Callable[[Record], None] | None = None,
+) -> list[Record]:
+    questions = _wire(skill_questions(include_behavior=include_behavior))
+    sem = asyncio.Semaphore(concurrency)
+
+    async with httpx.AsyncClient(timeout=timeout) as http:
+
+        async def one(item: SkillItem) -> Record:
+            rec = _base_record(item, "jev")
+            rec.model = model
+            async with sem:
+                start = time.perf_counter()
+                try:
+                    resp = await http.post(
+                        url,
+                        headers={"Authorization": f"Bearer {api_key}"},
+                        json={"model": model, "state": item.state(), "questions": questions},
+                    )
+                    payload = resp.json()
+                    if resp.status_code >= 400 or "error" in payload:
+                        message = payload.get("error", payload).get("message", resp.text)
+                        raise RuntimeError(f"HTTP {resp.status_code}: {message}")
+                except Exception as exc:
+                    rec.error = f"{type(exc).__name__}: {exc}"
+                    rec.latency_ms = (time.perf_counter() - start) * 1000
+                    return rec
+                rec.latency_ms = (time.perf_counter() - start) * 1000
+                usage = payload.get("usage") or {}
+                input_tokens = usage.get("input_tokens")
+                cost = usage.get("cost")
+                if cost is None and cost_from_tokens and input_tokens is not None:
+                    cost = input_tokens * JEV_USD_PER_INPUT_TOKEN
+                _fill(
+                    rec,
+                    payload.get("model", model),
+                    payload.get("answers", {}),
+                    input_tokens,
+                    usage.get("output_tokens"),
+                    cost,
+                )
+                return rec
+
+        return await _drain([asyncio.create_task(one(i)) for i in items], sink)
+
+
+async def run_jev_vercel(
+    items: list[SkillItem],
+    model: str = VERCEL_MODEL,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    concurrency: int = 16,
+    include_behavior: bool = True,
+    timeout: float = 90.0,
+    sink: Callable[[Record], None] | None = None,
+) -> list[Record]:
+    base_url = (base_url or os.environ.get("VERCEL_BASE_URL") or VERCEL_BASE).rstrip("/")
+    api_key = (
+        api_key
+        or os.environ.get("AI_GATEWAY_API_KEY")
+        or os.environ.get("VERCEL_API_KEY")
+    )
+    if not api_key:
+        raise RuntimeError("AI_GATEWAY_API_KEY or VERCEL_API_KEY is not set")
+    return await _run_jev_http(
+        items,
+        url=f"{base_url}/v1/systemone",
+        model=model,
+        api_key=api_key,
+        concurrency=concurrency,
+        include_behavior=include_behavior,
+        timeout=timeout,
+        cost_from_tokens=True,
+        sink=sink,
+    )
 
 
 async def run_jev_openrouter(
@@ -137,51 +246,30 @@ async def run_jev_openrouter(
     concurrency: int = 16,
     include_behavior: bool = True,
     timeout: float = 90.0,
+    sink: Callable[[Record], None] | None = None,
 ) -> list[Record]:
     base_url = (base_url or os.environ.get("OPENROUTER_BASE_URL") or OPENROUTER_BASE).rstrip("/")
     api_key = api_key or os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY is not set")
-    questions = _wire(skill_questions(include_behavior=include_behavior))
-    sem = asyncio.Semaphore(concurrency)
-
-    async with httpx.AsyncClient(timeout=timeout) as http:
-        async def one(item: SkillItem) -> Record:
-            rec = _base_record(item, "jev")
-            rec.model = model
-            async with sem:
-                start = time.perf_counter()
-                try:
-                    resp = await http.post(
-                        f"{base_url}/alpha/decisions",
-                        headers={"Authorization": f"Bearer {api_key}"},
-                        json={"model": model, "state": item.state(), "questions": questions},
-                    )
-                    payload = resp.json()
-                    if resp.status_code >= 400 or "error" in payload:
-                        raise RuntimeError((payload.get("error") or {}).get("message", resp.text))
-                except Exception as exc:
-                    rec.error = f"{type(exc).__name__}: {exc}"
-                    rec.latency_ms = (time.perf_counter() - start) * 1000
-                    return rec
-                rec.latency_ms = (time.perf_counter() - start) * 1000
-                usage = payload.get("usage") or {}
-                _fill(
-                    rec,
-                    payload.get("model", model),
-                    payload.get("answers", {}),
-                    usage.get("input_tokens"),
-                    usage.get("output_tokens"),
-                    usage.get("cost"),
-                )
-                return rec
-
-        return list(await asyncio.gather(*(one(i) for i in items)))
+    return await _run_jev_http(
+        items,
+        url=f"{base_url}/alpha/decisions",
+        model=model,
+        api_key=api_key,
+        concurrency=concurrency,
+        include_behavior=include_behavior,
+        timeout=timeout,
+        cost_from_tokens=False,
+        sink=sink,
+    )
 
 
 def resolve_backend(backend: str) -> str:
     if backend != "auto":
         return backend
+    if os.environ.get("AI_GATEWAY_API_KEY") or os.environ.get("VERCEL_API_KEY"):
+        return "vercel"
     if os.environ.get("TYPESAFE_API_KEY"):
         return "sdk"
     if os.environ.get("OPENROUTER_API_KEY"):
@@ -189,10 +277,18 @@ def resolve_backend(backend: str) -> str:
     return "sdk"
 
 
+def default_model_for(backend: str) -> str:
+    return {"vercel": VERCEL_MODEL, "openrouter": OPENROUTER_MODEL}.get(backend, DEFAULT_MODEL)
+
+
 def run_jev_sync(items: list[SkillItem], backend: str = "auto", **kwargs) -> list[Record]:
     resolved = resolve_backend(backend)
-    runner = run_jev_openrouter if resolved == "openrouter" else run_jev_sdk
-    return asyncio.run(runner(items, **kwargs))
+    runners = {
+        "vercel": run_jev_vercel,
+        "openrouter": run_jev_openrouter,
+        "sdk": run_jev_sdk,
+    }
+    return asyncio.run(runners[resolved](items, **kwargs))
 
 
 def write_records(path: str | Path, records: list[Record]) -> None:

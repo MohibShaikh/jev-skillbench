@@ -46,6 +46,7 @@ async def run_llm(
     concurrency: int = 8,
     timeout: float = 120.0,
     include_behavior: bool = True,
+    sink=None,
 ) -> list[Record]:
     base_url = (base_url or os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
     api_key = api_key or os.environ.get("OPENAI_API_KEY")
@@ -100,7 +101,13 @@ async def run_llm(
                 rec.harm_severity = float(severity) if severity is not None else None
                 return rec
 
-        return list(await asyncio.gather(*(one(i) for i in items)))
+        out: list[Record] = []
+        for coro in asyncio.as_completed([asyncio.create_task(one(i)) for i in items]):
+            rec = await coro
+            out.append(rec)
+            if sink is not None:
+                sink(rec)
+        return out
 
 
 def run_llm_sync(items: list[SkillItem], **kwargs) -> list[Record]:

@@ -1,0 +1,17 @@
+{
+  "arm": "jev",
+  "backend": "vercel",
+  "model": "typesafe-ai/jev",
+  "timestamp": "20260921T092422Z",
+  "git_sha": "c58d4a1",
+  "dataset": "data/MalSkillBench/Dataset/Skills",
+  "per_class": null,
+  "limit": null,
+  "only_generated": false,
+  "include_behavior": true,
+  "max_total_tokens": 30000,
+  "max_file_tokens": 12000,
+  "ids_from": null,
+  "n_planned": 7944,
+  "n_resumed": 0
+}

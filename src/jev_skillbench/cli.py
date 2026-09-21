@@ -14,9 +14,8 @@ from dotenv import load_dotenv
 
 from .dataset import DEFAULT_MAX_FILE_TOKENS, DEFAULT_MAX_TOTAL_TOKENS, load_benchmark
 from .detect import (
-    DEFAULT_MODEL,
-    OPENROUTER_MODEL,
     completed_ids,
+    default_model_for,
     read_records,
     resolve_backend,
     run_jev_sync,
@@ -55,9 +54,10 @@ def _git_sha() -> str | None:
         return None
 
 
-def _require(env: str, arm: str) -> None:
-    if not os.environ.get(env):
-        typer.echo(f"{arm} needs {env} in the environment (see .env.example)", err=True)
+def _require(label: str, *envs: str) -> None:
+    if not any(os.environ.get(env) for env in envs):
+        joined = " or ".join(envs)
+        typer.echo(f"{label} needs {joined} in the environment (see .env.example)", err=True)
         raise typer.Exit(1)
 
 
@@ -106,7 +106,7 @@ def models() -> None:
     """List TypeSafe models available to the account."""
     from typesafe_sdk import TypeSafeClient
 
-    _require("TYPESAFE_API_KEY", "models")
+    _require("models", "TYPESAFE_API_KEY")
     with TypeSafeClient() as client:
         for m in client.models.list().models:
             typer.echo(f"{m.name}\t{m.release_date}\t{m.description}")
@@ -118,7 +118,7 @@ def run(
     run_dir: str = typer.Option("", help="Run directory; a timestamped one under results/ is created when empty."),
     data: Path = typer.Option(Path(DEFAULT_DATA)),
     model: str = typer.Option("", help="Model id; default depends on arm and backend."),
-    backend: str = typer.Option("auto", help="Jev transport: auto, sdk, or openrouter."),
+    backend: str = typer.Option("auto", help="Jev transport: auto, sdk, vercel, or openrouter."),
     per_class: int = typer.Option(0, help="Stratified sample per class; 0 means all."),
     limit: int = typer.Option(0, help="Raw cap; ignored when per_class is set."),
     ids_from: Path = typer.Option(None, help="Restrict to ids present in this records file."),
@@ -153,7 +153,8 @@ def run(
     resolved = resolve_backend(backend) if arm == "jev" else None
     resolved_model = model
     if arm == "jev" and not resolved_model:
-        resolved_model = OPENROUTER_MODEL if resolved == "openrouter" else DEFAULT_MODEL
+        assert resolved is not None
+        resolved_model = default_model_for(resolved)
     if arm == "llm" and not resolved_model:
         resolved_model = os.environ.get("OPENAI_MODEL", "")
 
@@ -181,18 +182,34 @@ def run(
     if not items:
         return
 
+    def sink(record) -> None:
+        write_records(out, [record])
+
     if arm == "jev":
         assert resolved is not None
-        _require("TYPESAFE_API_KEY" if resolved == "sdk" else "OPENROUTER_API_KEY", f"jev via {resolved}")
-        records = run_jev_sync(
-            items, backend=resolved, model=resolved_model, concurrency=concurrency, include_behavior=not no_behavior
+        envs = {
+            "sdk": ("TYPESAFE_API_KEY",),
+            "vercel": ("AI_GATEWAY_API_KEY", "VERCEL_API_KEY"),
+            "openrouter": ("OPENROUTER_API_KEY",),
+        }[resolved]
+        _require(f"jev via {resolved}", *envs)
+        run_jev_sync(
+            items,
+            backend=resolved,
+            model=resolved_model,
+            concurrency=concurrency,
+            include_behavior=not no_behavior,
+            sink=sink,
         )
     else:
-        _require("OPENAI_API_KEY", "llm")
-        records = run_llm_sync(
-            items, model=resolved_model, concurrency=concurrency, include_behavior=not no_behavior
+        _require("llm", "OPENAI_API_KEY")
+        run_llm_sync(
+            items,
+            model=resolved_model,
+            concurrency=concurrency,
+            include_behavior=not no_behavior,
+            sink=sink,
         )
-    write_records(out, records)
     all_records = read_records(out)
     typer.echo(summary_table([summarize(all_records)]))
     typer.echo(f"errors {sum(1 for r in all_records if r.error)}")
