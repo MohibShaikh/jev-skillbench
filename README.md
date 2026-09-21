@@ -60,9 +60,11 @@ Questions, all typed:
 | `behavior` | Choice | B1..B15, none |
 | `harm_severity` | Score | four named levels |
 
-Reported per arm: recall and false positive rate overall and by attack vector,
-Brier score, expected calibration error, a reliability table, vector-label
-accuracy, p50/p95 latency, token usage, and cost per 1,000 skills.
+Reported per arm: recall and false positive rate overall, by attack vector, and
+split by truncation; Bootstrap 95% intervals; Brier score; expected calibration
+error; a reliability table; vector-label accuracy; p50/p95 latency; token usage;
+and cost per 1,000 skills. `evaluate` fits a threshold and an isotonic calibration
+map on one split and scores them on another, so neither is circular.
 
 Arms:
 
@@ -81,8 +83,11 @@ uv venv .venv && uv pip install -e ".[dev]"
 cp .env.example .env    # add a key, see below
 .venv/bin/jev-skillbench fetch
 .venv/bin/jev-skillbench stats
-.venv/bin/jev-skillbench run --arm jev --per-class 50 --out runs/smoke.jsonl
-.venv/bin/jev-skillbench report --records runs/smoke.jsonl
+.venv/bin/jev-skillbench run --arm jev --per-class 50
+.venv/bin/jev-skillbench run --arm llm --ids-from results/<run>/jev.jsonl
+.venv/bin/jev-skillbench score --records results/<run>
+.venv/bin/jev-skillbench evaluate --records results/<run>
+.venv/bin/jev-skillbench report --records results/<run>
 ```
 
 Two Jev transports, chosen with `--backend`:
@@ -90,67 +95,87 @@ Two Jev transports, chosen with `--backend`:
 - `sdk` talks to `api.typesafe.ai` and needs `TYPESAFE_API_KEY` from
   console.typesafe.ai/keys.
 - `openrouter` talks to OpenRouter's `/api/alpha/decisions` endpoint and needs
-  `OPENROUTER_API_KEY`. Jev is a decisions model there, not a chat model, and the
-  key needs credits. `models` only works on the SDK backend.
+  `OPENROUTER_API_KEY` with credits. Jev is a decisions model there, not a chat
+  model. `models` only works on the SDK backend.
 
 `--backend auto` (the default) picks `sdk` when `TYPESAFE_API_KEY` is set,
 otherwise `openrouter`.
 
-Runs append to JSONL and resume by default, so a killed run restarts where it
-stopped. Every raw per-sample record is kept, including the model version, token
-counts, and reported cost, so results can be recomputed without new API spend.
+## Protocol
 
-Scale up with `--per-class 500` for a stratified sample or drop it for all 7,944
-items. Ask for a real model id from `models`, not the `jev-latest` alias, and pin
-it in the README before publishing numbers.
+These rules exist because an earlier run was lost to a careless delete.
+
+- Every run writes to `results/<UTC timestamp>-<arm>/` and nothing there is
+  deleted. `run_dir` selects an existing directory to resume into.
+- `meta.json` in each run records the model, backend, git sha, sample size,
+  truncation budget, and seed, so a result can be traced to the code that made it.
+- The `llm` arm takes `--ids-from <jev run>/jev.jsonl` so both arms score the exact
+  same skills with the same states and the same truncation.
+- Runs append to JSONL and resume by default. Every raw per-sample record is kept,
+  including the model version, token counts, reported cost, and truncation flag.
+- Report bootstrap intervals with `score` and held-out calibration with
+  `evaluate`. Never tune a threshold on the same split you report it on.
+- Scale with `--per-class 500` for a stratified sample, or drop it for all 7,944
+  items. Pin an exact model id from `models`, not the `jev-latest` alias.
 
 ## Layout
 
 ```
 src/jev_skillbench/
-  dataset.py    MalSkillBench loader, label parsing, truncation policy
+  dataset.py    MalSkillBench loader, manifest labels, token-budgeted truncation
   questions.py  the Jev question set, the main experimental variable
-  detect.py     Jev arm, JSONL records, resume
-  llm.py        frontier LLM arm and cascade policy
-  metrics.py    confusion, per-vector recall, Brier, ECE, latency, cost
+  detect.py     Jev arms (SDK and OpenRouter decisions), JSONL records, resume
+  llm.py        frontier LLM arm on the same questions, and the cascade policy
+  metrics.py    confusion, per-vector recall, bootstrap CIs, Brier, ECE, latency, cost
+  holdout.py    held-out threshold tuning and isotonic calibration
   report.py     markdown tables and charts
-  cli.py        fetch, stats, models, run, cascade, score, report
+  cli.py        fetch, stats, models, run, cascade, score, evaluate, report
 tests/
 ```
 
 ## Results
 
-Smoke run, 100 skills (50 malicious, 50 benign), stratified sample with `seed 0`.
-Model `typesafe/jev-1.13-20260917`, threshold 0.5. Raw records in
-`runs/jev_smoke.jsonl`, report in `reports/smoke/`.
+Smoke run, 100 skills (50 malicious, 50 benign), `seed 0`. Model
+`typesafe/jev-1.13-20260917`. Artifacts in `results/20260921-jev-smoke/`. See that
+directory's `meta.json`: this run predates the token-budget loader, so treat its
+truncation behavior as unverified even though no record flagged as truncated.
 
 | arm | model | n | recall | FPR | precision | Brier | ECE |
 |---|---|---|---|---|---|---|---|
 | jev | typesafe/jev-1.13-20260917 | 100 | 0.76 | 0.00 | 1.00 | 0.091 | 0.135 |
 
-Recall by attack vector:
+Bootstrap 95% intervals at threshold 0.5: recall [0.64, 0.88], FPR [0.00, 0.00],
+Brier [0.053, 0.139], ECE [0.091, 0.193].
 
-| vector | recall | n |
-|---|---|---|
-| mixed | 1.00 | 9 |
-| ci | 0.88 | 16 |
-| pi | 0.65 | 17 |
-| wild | 0.50 | 8 |
+Recall by attack vector. Treat these as directions, not findings: n is 8 to 17.
 
-Cost was $0.15 per 1,000 skills at $0.042 per Mtok input, output free. p50
-latency 499 ms, p95 1,624 ms.
+| vector | recall | n | Wilson 95% |
+|---|---|---|---|
+| mixed | 1.00 | 9 | [0.70, 1.00] |
+| ci | 0.88 | 16 | [0.64, 0.97] |
+| pi | 0.65 | 17 | [0.41, 0.83] |
+| wild | 0.50 | 8 | [0.22, 0.78] |
 
-This is a 100-item smoke, not a benchmark result. The split across vectors is the
-thing to watch: near perfect on mixed attacks, weak on prompt injection, which is
-the same instruction-level failure the MalSkillBench authors report for other
-detectors. Re-run at 1,000 or full scale before quoting any of it.
+The finding worth pursuing is calibration, not the vector split. Jev is
+underconfident on this domain: every score above 0.2 was malicious (44 samples),
+and the highest benign score was 0.16. At threshold 0.5 recall is 0.76; in-sample
+at 0.2 it is 0.88 at FPR 0.00. On a 50/50 held-out split, `evaluate` picks 0.08
+for a 0.05 FPR target and gets recall 0.92 at FPR 0.08, up from 0.80 at 0.5, and
+isotonic calibration cuts Brier 0.074 to 0.063 and ECE 0.116 to 0.070. So the
+0.5 cutoff does leave recall on the table, and the gain is not free once measured
+out of sample. Headline to test at scale: Jev detects malicious skills well, but
+its probabilities need recalibrating for this domain.
+
+Cost was $0.15 per 1,000 skills at $0.042 per Mtok input, output free. Full
+7,944 skills is about $1.25. p50 latency 499 ms, p95 1,624 ms.
 
 Known caveats to state in any write-up:
 
 - Model aliases move between releases. Pin an exact version.
-- Jev 1.13 takes 32k tokens of state; large skills are truncated by the loader at
-  30k tokens, prioritizing SKILL.md then code. `truncated` per record lets you
-  report metrics split on it.
+- Jev 1.13 takes 32k tokens of state; the loader truncates at 30k, prioritizing
+  SKILL.md then code. Report recall split on `truncated`; if truncated skills are
+  missed more often, the budget is hiding malicious code.
+- n=100. Every interval above is wide. Nothing here is a benchmark result.
 - The wild subset is narrow and dominated by one campaign. Do not present
   source-conditioned results as general.
 - The taxonomy covers 9,740 identities in the second dataset but 3,944 here.

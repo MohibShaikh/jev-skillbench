@@ -1,0 +1,14 @@
+{
+  "run": "20260921-jev-smoke",
+  "arm": "jev",
+  "backend": "openrouter",
+  "model": "typesafe/jev-1.13-20260917",
+  "n": 100,
+  "per_class": 50,
+  "seed": 0,
+  "labels": "malware/_source_inventory.txt manifest",
+  "loader_policy": "legacy byte caps (max_file 60000B, max_total 200000B); superseded by the 30k-token budget. No record was flagged truncated, but this run was not produced under the token policy.",
+  "git_sha": "cc7ff1b",
+  "status": "illustrative smoke, not a benchmark result",
+  "notes": "Produced before the token-budget loader and the held-out calibration path existed. Kept as the only live Jev run with raw records. Superseded by the full run once the account has credits."
+}

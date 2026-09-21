@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import math
+import random
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from .detect import Record
@@ -87,12 +90,50 @@ def recall_by_vector(records: list[Record], threshold: float = 0.5) -> dict[str,
         if r.label != 1:
             continue
         key = r.gold_vector or "wild"
-        predicted = r.prob_malicious >= threshold
-        if predicted:
+        if r.prob_malicious >= threshold:
             out[key].tp += 1
         else:
             out[key].fn += 1
     return dict(out)
+
+
+def _resample(records: list[Record], rng: random.Random) -> list[Record]:
+    n = len(records)
+    return [records[rng.randrange(n)] for _ in range(n)]
+
+
+def bootstrap_ci(
+    records: list[Record],
+    fn: Callable[[list[Record]], float | None],
+    n_boot: int = 1000,
+    alpha: float = 0.05,
+    seed: int = 0,
+) -> dict:
+    point = fn(records)
+    if point is None or n_boot <= 0 or len(records) < 2:
+        return {"point": point, "lo": None, "hi": None, "n_boot": 0}
+    rng = random.Random(seed)
+    samples = []
+    for _ in range(n_boot):
+        value = fn(_resample(records, rng))
+        if value is not None:
+            samples.append(value)
+    if not samples:
+        return {"point": point, "lo": None, "hi": None, "n_boot": 0}
+    samples.sort()
+    lo = samples[max(0, int(alpha / 2 * len(samples)))]
+    hi = samples[min(len(samples) - 1, int((1 - alpha / 2) * len(samples)))]
+    return {"point": point, "lo": lo, "hi": hi, "n_boot": n_boot}
+
+
+def wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float | None, float | None]:
+    if total == 0:
+        return (None, None)
+    p = successes / total
+    denom = 1 + z * z / total
+    center = (p + z * z / (2 * total)) / denom
+    half = z * math.sqrt(p * (1 - p) / total + z * z / (4 * total * total)) / denom
+    return (max(0.0, center - half), min(1.0, center + half))
 
 
 def vector_accuracy(records: list[Record]) -> float | None:
@@ -197,21 +238,31 @@ def cost_per_1k(records: list[Record], input_per_1k: float, output_per_1k: float
     return per_skill * 1000
 
 
+def truncation_split(records: list[Record], threshold: float = 0.5) -> dict[str, dict]:
+    groups = {
+        "truncated": [r for r in records if r.truncated],
+        "intact": [r for r in records if not r.truncated],
+    }
+    return {name: confusion(chunk, threshold).as_dict() for name, chunk in groups.items() if chunk}
+
+
 def summarize(
     records: list[Record],
     threshold: float = 0.5,
     price_in_per_1k: float = 0.0,
     price_out_per_1k: float = 0.0,
     n_bins: int = 10,
+    n_boot: int = 0,
 ) -> dict:
     c = confusion(records, threshold)
     vectors = {k: v.as_dict() for k, v in recall_by_vector(records, threshold).items()}
-    return {
+    summary = {
         "arm": records[0].arm if records else None,
         "model": next((r.model for r in records if r.model), None),
         "threshold": threshold,
         "overall": c.as_dict(),
         "by_vector": vectors,
+        "by_truncation": truncation_split(records, threshold),
         "vector_label_accuracy": vector_accuracy(records),
         "brier": brier(records),
         "ece": ece(records, n_bins),
@@ -220,3 +271,11 @@ def summarize(
         "tokens": token_usage(records),
         "cost_per_1k_skills": cost_per_1k(records, price_in_per_1k, price_out_per_1k),
     }
+    if n_boot:
+        summary["intervals"] = {
+            "recall": bootstrap_ci(records, lambda r: confusion(r, threshold).recall, n_boot),
+            "fpr": bootstrap_ci(records, lambda r: confusion(r, threshold).fpr, n_boot),
+            "brier": bootstrap_ci(records, brier, n_boot),
+            "ece": bootstrap_ci(records, lambda r: ece(r, n_bins), n_boot),
+        }
+    return summary

@@ -129,16 +129,61 @@ def charts(records: list[Record], out_dir: str | Path) -> list[Path]:
     return written
 
 
+def interval_table(summary: dict) -> str:
+    intervals = summary.get("intervals") or {}
+    if not intervals:
+        return "_Run `score --bootstrap N` or `report --bootstrap N` for intervals._"
+    lines = ["| metric | point | 95% CI |", "|---|---|---|"]
+    for name, ci in intervals.items():
+        lines.append(f"| {name} | {_fmt(ci.get('point'))} | [{_fmt(ci.get('lo'))}, {_fmt(ci.get('hi'))}] |")
+    return "\n".join(lines)
+
+
+def truncation_table(summary: dict) -> str:
+    groups = summary.get("by_truncation") or {}
+    if not groups:
+        return "_No records._"
+    lines = ["| group | n | recall | FPR | precision |", "|---|---|---|---|---|"]
+    for name, c in groups.items():
+        lines.append(
+            f"| {name} | {c['n']} | {_fmt(c['recall'])} | {_fmt(c['fpr'])} | {_fmt(c['precision'])} |"
+        )
+    return "\n".join(lines)
+
+
+def holdout_section(out_dir: Path) -> str:
+    path = out_dir / "holdout.json"
+    if not path.exists():
+        return ""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    at_default = data["eval_at_default"]
+    at_tuned = data["eval_at_tuned"]
+    lines = [
+        "## Held-out calibration",
+        "",
+        f"Fit n={data['fit_n']}, eval n={data['eval_n']}, target FPR {data['target_fpr']}.",
+        "",
+        "| operating point | recall | FPR | precision |",
+        "|---|---|---|---|",
+        f"| default {data['default_threshold']} | {_fmt(at_default['recall'])} | {_fmt(at_default['fpr'])} | {_fmt(at_default['precision'])} |",
+        f"| tuned {_fmt(data['tuned_threshold'])} | {_fmt(at_tuned['recall'])} | {_fmt(at_tuned['fpr'])} | {_fmt(at_tuned['precision'])} |",
+        "",
+        f"Brier raw {_fmt(data['eval_brier_raw'])} to isotonic {_fmt(data['eval_brier_isotonic'])}. ECE raw {_fmt(data['eval_ece_raw'])} to isotonic {_fmt(data['eval_ece_isotonic'])}.",
+    ]
+    return "\n".join(lines)
+
+
 def write_report(
     records: list[Record],
     out_dir: str | Path,
     threshold: float = 0.5,
     price_in_per_1k: float = 0.0,
     price_out_per_1k: float = 0.0,
+    n_boot: int = 0,
 ) -> Path:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    summary = summarize(records, threshold, price_in_per_1k, price_out_per_1k)
+    summary = summarize(records, threshold, price_in_per_1k, price_out_per_1k, n_boot=n_boot)
     (out / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     parts = [
         f"# Results: {summary['arm']} ({summary['model']})",
@@ -149,9 +194,17 @@ def write_report(
         "",
         summary_table([summary]),
         "",
+        "## Bootstrap intervals",
+        "",
+        interval_table(summary),
+        "",
         "## Recall by attack vector",
         "",
         vector_table([summary]),
+        "",
+        "## Truncation split",
+        "",
+        truncation_table(summary),
         "",
         "## Calibration",
         "",
@@ -164,6 +217,9 @@ def write_report(
         "",
         f"p50 {_fmt(summary['latency']['p50_ms'], 1)} ms, p95 {_fmt(summary['latency']['p95_ms'], 1)} ms, cost per 1k skills {_fmt(summary['cost_per_1k_skills'], 4)}",
     ]
+    holdout = holdout_section(out)
+    if holdout:
+        parts += ["", holdout]
     md = out / "report.md"
     md.write_text("\n".join(parts) + "\n", encoding="utf-8")
     charts(records, out)

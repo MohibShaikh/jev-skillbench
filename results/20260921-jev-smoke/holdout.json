@@ -1,0 +1,65 @@
+{
+  "fit_n": 50,
+  "eval_n": 50,
+  "default_threshold": 0.5,
+  "tuned_threshold": 0.08,
+  "target_fpr": 0.05,
+  "fit_at_reported": {
+    "tp": 18,
+    "fp": 0,
+    "tn": 25,
+    "fn": 7,
+    "n": 50,
+    "n_errors": 0,
+    "recall": 0.72,
+    "fpr": 0.0,
+    "precision": 1.0,
+    "f1": 0.8372093023255813,
+    "accuracy": 0.86
+  },
+  "eval_at_default": {
+    "tp": 20,
+    "fp": 0,
+    "tn": 25,
+    "fn": 5,
+    "n": 50,
+    "n_errors": 0,
+    "recall": 0.8,
+    "fpr": 0.0,
+    "precision": 1.0,
+    "f1": 0.888888888888889,
+    "accuracy": 0.9
+  },
+  "eval_at_tuned": {
+    "tp": 23,
+    "fp": 2,
+    "tn": 23,
+    "fn": 2,
+    "n": 50,
+    "n_errors": 0,
+    "recall": 0.92,
+    "fpr": 0.08,
+    "precision": 0.92,
+    "f1": 0.92,
+    "accuracy": 0.92
+  },
+  "eval_brier_raw": 0.073556,
+  "eval_ece_raw": 0.11639999999999999,
+  "eval_brier_isotonic": 0.0625,
+  "eval_ece_isotonic": 0.06999999999999998,
+  "isotonic_points": 24,
+  "eval_intervals_at_tuned": {
+    "recall": {
+      "point": 0.92,
+      "lo": 0.8,
+      "hi": 1.0,
+      "n_boot": 1000
+    },
+    "fpr": {
+      "point": 0.08,
+      "lo": 0.0,
+      "hi": 0.20833333333333334,
+      "n_boot": 1000
+    }
+  }
+}
