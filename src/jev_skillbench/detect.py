@@ -348,5 +348,7 @@ def read_records(path: str | Path) -> list[Record]:
     return out
 
 
-def completed_ids(path: str | Path) -> set[str]:
-    return {r.id for r in read_records(path) if r.error is None}
+def completed_ids(path: str | Path) -> set[tuple[str, str]]:
+    """Keys of records that succeeded. Names are not unique across classes, so the
+    key is (split, id), which is unique within the benchmark."""
+    return {(r.split, r.id) for r in read_records(path) if r.error is None}

@@ -152,11 +152,11 @@ def run(
         max_file_tokens=max_file_tokens,
     )
     if ids_from is not None:
-        wanted = {r.id for r in read_records(ids_from)}
-        items = [i for i in items if i.id in wanted]
+        wanted = {(r.split, r.id) for r in read_records(ids_from)}
+        items = [i for i in items if (i.split, i.id) in wanted]
     already = completed_ids(out) if resume else set()
     if already:
-        items = [i for i in items if i.id not in already]
+        items = [i for i in items if (i.split, i.id) not in already]
 
     resolved = resolve_backend(backend) if arm == "jev" else None
     resolved_model = model
@@ -219,6 +219,7 @@ def run(
             "include_behavior": not no_behavior,
             "sink": sink,
             "max_output_tokens": max_output_tokens,
+            "max_retries": max_retries,
         }
         if reasoning_effort:
             llm_kwargs["reasoning_effort"] = reasoning_effort
@@ -284,7 +285,7 @@ def cascade(
     ]
     typer.echo(f"escalating {len(escalate)} of {len(items)} to {model}")
     done = completed_ids(out)
-    escalate = [i for i in escalate if i.id not in done]
+    escalate = [i for i in escalate if (i.split, i.id) not in done]
     if escalate:
         write_records(out, run_llm_sync(escalate, model=model, concurrency=concurrency))
     llm = {r.id: r for r in read_records(out)}

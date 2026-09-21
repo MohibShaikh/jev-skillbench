@@ -15,7 +15,7 @@ import time
 import httpx
 
 from .dataset import SkillItem
-from .detect import Record, _base_record
+from .detect import Record, _base_record, _post_with_retry
 from .questions import ATTACK_VECTORS, BEHAVIORS, skill_questions
 
 
@@ -49,6 +49,7 @@ async def run_llm(
     sink=None,
     max_output_tokens: int = 300,
     reasoning_effort: str | None = None,
+    max_retries: int = 5,
 ) -> list[Record]:
     base_url = (base_url or os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
     api_key = api_key or os.environ.get("OPENAI_API_KEY")
@@ -77,10 +78,8 @@ async def run_llm(
                     }
                     if reasoning_effort:
                         body["reasoning_effort"] = reasoning_effort
-                    resp = await http.post(
-                        f"{base_url}/chat/completions",
-                        headers={"Authorization": f"Bearer {api_key}"},
-                        json=body,
+                    resp = await _post_with_retry(
+                        http, f"{base_url}/chat/completions", api_key, body, max_retries
                     )
                     resp.raise_for_status()
                     payload = resp.json()

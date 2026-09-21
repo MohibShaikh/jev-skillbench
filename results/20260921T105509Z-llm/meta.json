@@ -1,0 +1,18 @@
+{
+  "arm": "llm",
+  "backend": null,
+  "model": "openai/gpt-4.1-mini",
+  "timestamp": "20260921T105543Z",
+  "git_sha": "a25fba3",
+  "dataset": "data/MalSkillBench/Dataset/Skills",
+  "per_class": null,
+  "limit": null,
+  "only_generated": false,
+  "include_behavior": true,
+  "max_total_tokens": 30000,
+  "max_file_tokens": 12000,
+  "policy_version": 3,
+  "ids_from": "results/samples/pilot100.jsonl",
+  "n_planned": 103,
+  "n_resumed": 0
+}
