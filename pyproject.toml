@@ -1,0 +1,46 @@
+[project]
+name = "jev-skillbench"
+version = "0.1.0"
+description = "Measure Jev as a malicious agent-skill detector on MalSkillBench"
+requires-python = ">=3.10"
+dependencies = [
+    "typesafe-sdk>=0.4",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pandas>=2.2",
+    "pyarrow>=16",
+    "matplotlib>=3.8",
+    "typer>=0.12",
+    "python-dotenv>=1.0",
+    "tqdm>=4.66",
+    "tiktoken>=0.7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+jev-skillbench = "jev_skillbench.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jev_skillbench"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "C4", "UP", "SIM", "RUF", "BLE", "ISC"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/jev_skillbench/cli.py" = ["B008"]
+"src/jev_skillbench/detect.py" = ["BLE001"]
+"src/jev_skillbench/llm.py" = ["BLE001"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
