@@ -77,11 +77,14 @@ Arms:
 
 Thresholds and cost are the two things to fit on validation data, not on test.
 
-Jev bills input at $42 per billion tokens, which is $0.042 per million, and output
-is free. The chat-model baselines bill per million tokens on both sides, so the
-`llm` arm costs far more than the `jev` arm and the gap depends entirely on the
-pinned model. Measure it on 100 skills with `--ids-from` before extrapolating, and
-put the cost gap in the results table next to recall.
+Jev bills input at $42 per billion tokens ($0.042 per million) and output is free.
+The 7,944 states total 23.9M tokens, so the full `jev` run costs about $1.00. The
+chat baselines bill per million tokens on both sides, so the same states cost about
+$1.45 for `openai/gpt-5-nano`, $7.24 for `openai/gpt-5-mini`, and $8.75 for
+`google/gemini-2.5-flash`, assuming 80 output tokens per skill. Pin the model,
+measure 100 skills with `--ids-from`, then extrapolate, and put the cost gap in
+the results table next to recall. Note that $2 of OpenRouter credit covers the full
+Jev run but not a full chat baseline on any frontier model.
 
 ## Quickstart
 
@@ -183,8 +186,9 @@ Known caveats to state in any write-up:
 
 - Model aliases move between releases. Pin an exact version.
 - Jev 1.13 takes 32k tokens of state; the loader truncates at 30k, prioritizing
-  SKILL.md then code. Report recall split on `truncated`; if truncated skills are
-  missed more often, the budget is hiding malicious code.
+  SKILL.md then code. That hits 120 of 7,944 skills (1.5%), of which 11 are
+  malicious, so it is a small confound rather than a driver. Report recall split on
+  `truncated` anyway.
 - n=100. Every interval above is wide. Nothing here is a benchmark result.
 - The held-out figures come from about 25 benign samples per side, so one false
   positive moves FPR by roughly 4 points, and isotonic on 50 points can overfit.
