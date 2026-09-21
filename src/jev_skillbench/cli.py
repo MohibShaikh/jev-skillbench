@@ -133,6 +133,8 @@ def run(
     no_behavior: bool = typer.Option(False, help="Drop the B1..B15 question."),
     max_total_tokens: int = typer.Option(DEFAULT_MAX_TOTAL_TOKENS),
     max_file_tokens: int = typer.Option(DEFAULT_MAX_FILE_TOKENS),
+    max_output_tokens: int = typer.Option(300, help="LLM arm output cap; output is the expensive side."),
+    reasoning_effort: str = typer.Option("", help="LLM arm reasoning effort, e.g. minimal; empty omits it."),
     resume: bool = typer.Option(True),
 ) -> None:
     """Run one detector arm. Appends to <run_dir>/<arm>.jsonl and resumes by default."""
@@ -211,13 +213,16 @@ def run(
         run_jev_sync(items, backend=resolved, **kwargs)
     else:
         _require("llm", "OPENAI_API_KEY")
-        run_llm_sync(
-            items,
-            model=resolved_model,
-            concurrency=concurrency,
-            include_behavior=not no_behavior,
-            sink=sink,
-        )
+        llm_kwargs = {
+            "model": resolved_model,
+            "concurrency": concurrency,
+            "include_behavior": not no_behavior,
+            "sink": sink,
+            "max_output_tokens": max_output_tokens,
+        }
+        if reasoning_effort:
+            llm_kwargs["reasoning_effort"] = reasoning_effort
+        run_llm_sync(items, **llm_kwargs)
     all_records = read_records(out)
     typer.echo(summary_table([summarize(all_records)]))
     typer.echo(f"errors {sum(1 for r in all_records if r.error)}")

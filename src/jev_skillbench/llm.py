@@ -47,6 +47,8 @@ async def run_llm(
     timeout: float = 120.0,
     include_behavior: bool = True,
     sink=None,
+    max_output_tokens: int = 300,
+    reasoning_effort: str | None = None,
 ) -> list[Record]:
     base_url = (base_url or os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
     api_key = api_key or os.environ.get("OPENAI_API_KEY")
@@ -63,18 +65,22 @@ async def run_llm(
             async with sem:
                 start = time.perf_counter()
                 try:
+                    body = {
+                        "model": model,
+                        "temperature": 0,
+                        "response_format": {"type": "json_object"},
+                        "max_tokens": max_output_tokens,
+                        "messages": [
+                            {"role": "system", "content": system},
+                            {"role": "user", "content": json.dumps(item.state(), ensure_ascii=False)},
+                        ],
+                    }
+                    if reasoning_effort:
+                        body["reasoning_effort"] = reasoning_effort
                     resp = await http.post(
                         f"{base_url}/chat/completions",
                         headers={"Authorization": f"Bearer {api_key}"},
-                        json={
-                            "model": model,
-                            "temperature": 0,
-                            "response_format": {"type": "json_object"},
-                            "messages": [
-                                {"role": "system", "content": system},
-                                {"role": "user", "content": json.dumps(item.state(), ensure_ascii=False)},
-                            ],
-                        },
+                        json=body,
                     )
                     resp.raise_for_status()
                     payload = resp.json()
