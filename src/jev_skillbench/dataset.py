@@ -24,13 +24,15 @@ from .questions import BEHAVIORS
 MANIFEST_NAME = "_source_inventory.txt"
 
 # Bump when the state-building policy changes, so records can be grouped by it.
-POLICY_VERSION = 2
+POLICY_VERSION = 3
 
 _BLANK_RUN = re.compile(r"\n{3,}")
 _TRAILING_WS = re.compile(r"[ \t]+\n")
 
-# Jev 1.13 accepts 32k tokens for state plus the longest question. Stay under it.
-DEFAULT_MAX_TOTAL_TOKENS = 30_000
+# Jev 1.13 accepts 32k tokens for state plus the longest question. The API counts
+# the JSON wrapper, file paths, and question payload on top of file content, so
+# this budget counts content only and leaves about 2k of headroom.
+DEFAULT_MAX_TOTAL_TOKENS = 28_000
 DEFAULT_MAX_FILE_TOKENS = 12_000
 
 _ENCODER = tiktoken.get_encoding("cl100k_base")

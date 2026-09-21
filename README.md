@@ -7,8 +7,8 @@ probabilities instead of prose. This repo asks one question with numbers: does a
 semantic judgment model close the instruction-level gap where static and LLM
 skill scanners fail, and what does that cost per skill?
 
-The harness is built and unit tested. A preliminary 100-skill result is under
-[Results](#results); a full 7,944-skill run supersedes it.
+The harness is built and unit tested. The full benchmark result is under
+[Results](#results).
 
 ## Why this gap
 
@@ -100,16 +100,20 @@ cp .env.example .env    # add a key, see below
 .venv/bin/jev-skillbench report --records results/<run>
 ```
 
-Two Jev transports, chosen with `--backend`:
+Three Jev transports, chosen with `--backend`:
 
 - `sdk` talks to `api.typesafe.ai` and needs `TYPESAFE_API_KEY` from
-  console.typesafe.ai/keys.
+  console.typesafe.ai/keys. This is the fast path: about 9 to 25 requests per
+  second against 0.6 per second through the gateway.
+- `vercel` talks to Vercel AI Gateway's TypeSafe-compatible route at
+  `https://ai-gateway.vercel.sh/typesafe/v1/systemone` with model
+  `typesafe-ai/jev`, and needs `AI_GATEWAY_API_KEY` or `VERCEL_API_KEY`. The free
+  tier is rate limited per model, so expect heavy 429s at concurrency above 1.
 - `openrouter` talks to OpenRouter's `/api/alpha/decisions` endpoint and needs
-  `OPENROUTER_API_KEY` with credits. Jev is a decisions model there, not a chat
-  model. `models` only works on the SDK backend.
+  `OPENROUTER_API_KEY` with purchased credits.
 
-`--backend auto` (the default) picks `sdk` when `TYPESAFE_API_KEY` is set,
-otherwise `openrouter`.
+`--backend auto` (the default) prefers `vercel`, then `sdk`, then `openrouter`,
+based on which keys are present.
 
 ## Protocol
 
@@ -137,7 +141,7 @@ These rules exist because an earlier run was lost to a careless delete.
 src/jev_skillbench/
   dataset.py    MalSkillBench loader, manifest labels, token-budgeted truncation
   questions.py  the Jev question set, the main experimental variable
-  detect.py     Jev arms (SDK and OpenRouter decisions), JSONL records, resume
+  detect.py     Jev arms (SDK, Vercel gateway, OpenRouter), JSONL records, resume
   llm.py        frontier LLM arm on the same questions, and the cascade policy
   metrics.py    confusion, per-vector recall, bootstrap CIs, Brier, ECE, latency, cost
   holdout.py    held-out threshold tuning and isotonic calibration
@@ -148,54 +152,77 @@ tests/
 
 ## Results
 
-Smoke run, 100 skills (50 malicious, 50 benign), `seed 0`. Model
-`typesafe/jev-1.13-20260917`. Artifacts in `results/20260921-jev-smoke/`. See that
-directory's `meta.json`: this run predates the token-budget loader, so treat its
-truncation behavior as unverified even though no record flagged as truncated.
+Full benchmark run: all 7,944 skills (3,944 malicious, 4,000 benign), model
+`jev-1.13.0`, threshold 0.5, one TypeSafe request per skill. Artifacts in
+`results/20260921T095913Z-jev/` (raw `jev.jsonl`, `summary.json`, `holdout.json`,
+`report.md`, charts) with the run configuration in `meta.json`.
 
-| arm | model | n | recall | FPR | precision | Brier | ECE |
-|---|---|---|---|---|---|---|---|
-| jev | typesafe/jev-1.13-20260917 | 100 | 0.76 | 0.00 | 1.00 | 0.091 | 0.135 |
+| arm | model | n | recall | FPR | precision | F1 | Brier | ECE |
+|---|---|---|---|---|---|---|---|---|
+| jev | jev-1.13.0 | 7,907 | 0.755 | 0.0008 | 0.999 | 0.860 | 0.096 | 0.126 |
 
-Bootstrap 95% intervals at threshold 0.5: recall [0.64, 0.88], FPR [0.00, 0.00],
-Brier [0.053, 0.139], ECE [0.091, 0.193].
+Bootstrap 95% intervals at threshold 0.5: recall [0.742, 0.770], FPR [0.000,
+0.002], Brier [0.090, 0.102], ECE [0.120, 0.133].
 
-Recall by attack vector. Treat these as directions, not findings: n is 8 to 17.
+Recall by attack vector, and vector-label accuracy 0.776:
 
-| vector | recall | n | Wilson 95% |
-|---|---|---|---|
-| mixed | 1.00 | 9 | [0.70, 1.00] |
-| ci | 0.88 | 16 | [0.64, 0.97] |
-| pi | 0.65 | 17 | [0.41, 0.83] |
-| wild | 0.50 | 8 | [0.22, 0.78] |
+| vector | recall | n |
+|---|---|---|
+| ci | 0.914 | 1,346 |
+| mixed | 0.905 | 568 |
+| pi | 0.715 | 1,300 |
+| wild | 0.416 | 726 |
 
-The finding worth pursuing is calibration, not the vector split. Jev is
-underconfident on this domain: every score above 0.2 was malicious (44 samples),
-and the highest benign score was 0.16. At threshold 0.5 recall is 0.76; in-sample
-at 0.2 it is 0.88 at FPR 0.00. On a 50/50 held-out split, `evaluate` picks 0.08
-for a 0.05 FPR target and gets recall 0.92 at FPR 0.08, up from 0.80 at 0.5, and
-isotonic calibration cuts Brier 0.074 to 0.063 and ECE 0.116 to 0.070. So the
-0.5 cutoff does leave recall on the table, and the gain is not free once measured
-out of sample. Headline to test at scale: Jev detects malicious skills well, but
-its probabilities need recalibrating for this domain.
+At the default 0.5 cutoff, 35 benign skills out of 4,000 are flagged and 968
+malicious skills are missed. The wild subset is the weak spot, which lines up with
+what the MalSkillBench authors report for other detectors.
 
-Cost was $0.15 per 1,000 skills at $0.042 per Mtok input, output free. Full
-7,944 skills is about $1.25. p50 latency 499 ms, p95 1,624 ms.
+The main finding is calibration. Jev is underconfident on this domain: almost
+nothing benign scores above 0.2, so the 0.5 cutoff discards recall. On a held-out
+split stratified by label, split, and attack vector:
+
+| operating point | recall | FPR |
+|---|---|---|
+| default 0.5 | 0.763 | 0.001 |
+| tuned 0.09 | 0.916 | 0.049 |
+
+Isotonic calibration fit on one half and scored on the other cuts ECE from 0.123
+to 0.010 and Brier from 0.093 to 0.049. So Jev detects malicious skills well and
+its probabilities need recalibrating for this domain. The recall gain at the tuned
+threshold costs about 5% FPR, so the operating point is a policy choice, not a
+free win.
+
+Cost was $1.38 for the full set, $0.174 per 1,000 skills at $0.042 per Mtok input
+with output free. p50 latency 391 ms, p95 669 ms.
 
 Known caveats to state in any write-up:
 
-- Model aliases move between releases. Pin an exact version.
-- Jev 1.13 takes 32k tokens of state; the loader truncates at 30k, prioritizing
-  SKILL.md then code. That hits 120 of 7,944 skills (1.5%), of which 11 are
-  malicious, so it is a small confound rather than a driver. Report recall split on
-  `truncated` anyway.
-- n=100. Every interval above is wide. Nothing here is a benchmark result.
-- The held-out figures come from about 25 benign samples per side, so one false
-  positive moves FPR by roughly 4 points, and isotonic on 50 points can overfit.
-  Do not quote them; the full run is the fix.
+- 37 of 7,944 requests (0.5%) failed with `max_tokens_exceeded`: 33 benign and 4
+  wild skills whose state plus JSON wrapper exceeded Jev's 32k context. They are
+  excluded from the metrics. The default budget is now 28k with headroom, so a
+  fresh run does not hit this.
+- Truncation is a real confound, not a footnote: recall is 0.571 on the 84
+  truncated skills in the scored set versus 0.756 on the intact ones. n is small,
+  so the interval is wide, but the direction is consistent with the budget hiding
+  malicious code.
+- Model aliases move between releases. Pin an exact version, as this run does.
 - The wild subset is narrow and dominated by one campaign. Do not present
   source-conditioned results as general.
+- No baseline has run yet. The `llm` arm and the cascade are built but unrun, so
+  no claim here compares Jev to another detector.
 - The taxonomy covers 9,740 identities in the second dataset but 3,944 here.
+- The earlier 100-skill smoke is kept in `results/20260921-jev-smoke/` for
+  provenance only; do not quote it.
+
+## Reproducing
+
+```
+.venv/bin/jev-skillbench run --arm jev --backend sdk --concurrency 8
+.venv/bin/jev-skillbench run --arm llm --ids-from results/<run>/jev.jsonl --model <pinned-model>
+.venv/bin/jev-skillbench score    --records results/<run>
+.venv/bin/jev-skillbench evaluate --records results/<run>
+.venv/bin/jev-skillbench report   --records results/<run>
+```
 
 ## License
 
