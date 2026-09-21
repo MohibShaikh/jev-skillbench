@@ -112,8 +112,8 @@ Three Jev transports, chosen with `--backend`:
 - `openrouter` talks to OpenRouter's `/api/alpha/decisions` endpoint and needs
   `OPENROUTER_API_KEY` with purchased credits.
 
-`--backend auto` (the default) prefers `vercel`, then `sdk`, then `openrouter`,
-based on which keys are present.
+`--backend auto` (the default) prefers `sdk`, then `vercel`, then `openrouter`,
+based on which keys are present. `sdk` is the fast path, so it is tried first.
 
 ## Protocol
 
@@ -164,18 +164,25 @@ Full benchmark run: all 7,944 skills (3,944 malicious, 4,000 benign), model
 Bootstrap 95% intervals at threshold 0.5: recall [0.742, 0.770], FPR [0.000,
 0.002], Brier [0.090, 0.102], ECE [0.120, 0.133].
 
-Recall by attack vector, and vector-label accuracy 0.776:
+Recall by attack vector, at the default cutoff and at the tuned 0.09 threshold
+(tuned on the held-out half; both columns scored on the full set). Vector-label
+accuracy is 0.776.
 
-| vector | recall | n |
-|---|---|---|
-| ci | 0.914 | 1,346 |
-| mixed | 0.905 | 568 |
-| pi | 0.715 | 1,300 |
-| wild | 0.416 | 726 |
+| vector | n | recall @0.5 | recall @0.09 | truncated |
+|---|---|---|---|---|
+| ci | 1,346 | 0.914 | 0.993 | 2 |
+| mixed | 568 | 0.905 | 1.000 | 0 |
+| pi | 1,300 | 0.715 | 0.884 | 1 |
+| wild | 726 | 0.416 | 0.730 | 4 |
 
-At the default 0.5 cutoff, 35 benign skills out of 4,000 are flagged and 968
-malicious skills are missed. The wild subset is the weak spot, which lines up with
-what the MalSkillBench authors report for other detectors.
+At the default 0.5 cutoff, 3 benign skills out of 4,000 are flagged and 964
+malicious skills are missed. The wild subset is the weak spot, and it is not a
+truncation artifact: wild skills truncate 4 of 726 (0.6%) and are smaller than
+average (1,859 state tokens versus 2,834 for ci). 77 of the 84 truncated skills
+are benign. Wild recall improves to 0.730 at the tuned threshold but stays the
+lowest by a wide margin, so the weakness is in the ranking, not only the
+calibration. That lines up with what the MalSkillBench authors report: real-world
+malware is where detectors diverge.
 
 The main finding is calibration. Jev is underconfident on this domain: almost
 nothing benign scores above 0.2, so the 0.5 cutoff discards recall. On a held-out

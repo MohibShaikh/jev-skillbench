@@ -138,8 +138,8 @@ def test_backend_model_defaults_and_resolution(monkeypatch):
     monkeypatch.setenv("VERCEL_API_KEY", "vck_x")
     assert detect.resolve_backend("auto") == "vercel"
     monkeypatch.setenv("TYPESAFE_API_KEY", "apikey_x")
-    assert detect.resolve_backend("auto") == "vercel"
-    assert detect.resolve_backend("sdk") == "sdk"
+    assert detect.resolve_backend("auto") == "sdk"
+    assert detect.resolve_backend("vercel") == "vercel"
 
 
 def test_sdk_runner_rejects_unknown_kwargs():

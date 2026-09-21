@@ -170,6 +170,21 @@ def holdout_section(out_dir: Path) -> str:
         "",
         f"Brier raw {_fmt(data['eval_brier_raw'])} to isotonic {_fmt(data['eval_brier_isotonic'])}. ECE raw {_fmt(data['eval_ece_raw'])} to isotonic {_fmt(data['eval_ece_isotonic'])}.",
     ]
+    per_vector = data.get("eval_by_vector_at_tuned") or {}
+    if per_vector:
+        lines += [
+            "",
+            "Per-vector recall on the eval split at each operating point:",
+            "",
+            "| vector | n | recall @ default | recall @ tuned |",
+            "|---|---|---|---|",
+        ]
+        for name in sorted(per_vector):
+            tuned = per_vector[name]
+            default = (data.get("eval_by_vector_at_default") or {}).get(name, {})
+            lines.append(
+                f"| {name} | {tuned['tp'] + tuned['fn']} | {_fmt(default.get('recall'))} | {_fmt(tuned.get('recall'))} |"
+            )
     return "\n".join(lines)
 
 

@@ -304,10 +304,10 @@ async def run_jev_openrouter(
 def resolve_backend(backend: str) -> str:
     if backend != "auto":
         return backend
-    if os.environ.get("AI_GATEWAY_API_KEY") or os.environ.get("VERCEL_API_KEY"):
-        return "vercel"
     if os.environ.get("TYPESAFE_API_KEY"):
         return "sdk"
+    if os.environ.get("AI_GATEWAY_API_KEY") or os.environ.get("VERCEL_API_KEY"):
+        return "vercel"
     if os.environ.get("OPENROUTER_API_KEY"):
         return "openrouter"
     return "sdk"

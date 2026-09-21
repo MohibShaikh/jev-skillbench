@@ -10,7 +10,7 @@ import random
 from dataclasses import replace
 
 from .detect import Record
-from .metrics import bootstrap_ci, brier, confusion, ece, wilson_interval
+from .metrics import bootstrap_ci, brier, confusion, ece, recall_by_vector, wilson_interval
 
 
 def stratified_split(
@@ -126,6 +126,12 @@ def analyze_holdout(
         "eval_ece_raw": ece(evaluation),
         "eval_brier_isotonic": brier(evaluation_calibrated),
         "eval_ece_isotonic": ece(evaluation_calibrated),
+        "eval_by_vector_at_default": {
+            k: v.as_dict() for k, v in recall_by_vector(evaluation, default_threshold).items()
+        },
+        "eval_by_vector_at_tuned": {
+            k: v.as_dict() for k, v in recall_by_vector(evaluation, tuned).items()
+        },
         "isotonic_points": len(model),
     }
     if n_boot:

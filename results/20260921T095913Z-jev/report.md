@@ -62,3 +62,12 @@ Fit n=3955, eval n=3952, target FPR 0.05.
 | tuned 0.090 | 0.916 | 0.049 | 0.949 |
 
 Brier raw 0.093 to isotonic 0.049. ECE raw 0.123 to isotonic 0.010.
+
+Per-vector recall on the eval split at each operating point:
+
+| vector | n | recall @ default | recall @ tuned |
+|---|---|---|---|
+| ci | 673 | 0.917 | 0.994 |
+| mixed | 284 | 0.901 | 1.000 |
+| pi | 650 | 0.722 | 0.894 |
+| wild | 362 | 0.445 | 0.743 |

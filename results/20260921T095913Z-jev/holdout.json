@@ -47,6 +47,114 @@
   "eval_ece_raw": 0.12261892712550607,
   "eval_brier_isotonic": 0.04906418127431368,
   "eval_ece_isotonic": 0.009791586016423194,
+  "eval_by_vector_at_default": {
+    "ci": {
+      "tp": 617,
+      "fp": 0,
+      "tn": 0,
+      "fn": 56,
+      "n": 673,
+      "n_errors": 0,
+      "recall": 0.9167904903417533,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.9565891472868218,
+      "accuracy": 0.9167904903417533
+    },
+    "pi": {
+      "tp": 469,
+      "fp": 0,
+      "tn": 0,
+      "fn": 181,
+      "n": 650,
+      "n_errors": 0,
+      "recall": 0.7215384615384616,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.8382484361036641,
+      "accuracy": 0.7215384615384616
+    },
+    "mixed": {
+      "tp": 256,
+      "fp": 0,
+      "tn": 0,
+      "fn": 28,
+      "n": 284,
+      "n_errors": 0,
+      "recall": 0.9014084507042254,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.9481481481481481,
+      "accuracy": 0.9014084507042254
+    },
+    "wild": {
+      "tp": 161,
+      "fp": 0,
+      "tn": 0,
+      "fn": 201,
+      "n": 362,
+      "n_errors": 0,
+      "recall": 0.4447513812154696,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.615678776290631,
+      "accuracy": 0.4447513812154696
+    }
+  },
+  "eval_by_vector_at_tuned": {
+    "ci": {
+      "tp": 669,
+      "fp": 0,
+      "tn": 0,
+      "fn": 4,
+      "n": 673,
+      "n_errors": 0,
+      "recall": 0.9940564635958395,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.9970193740685545,
+      "accuracy": 0.9940564635958395
+    },
+    "pi": {
+      "tp": 581,
+      "fp": 0,
+      "tn": 0,
+      "fn": 69,
+      "n": 650,
+      "n_errors": 0,
+      "recall": 0.8938461538461538,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.9439480097481722,
+      "accuracy": 0.8938461538461538
+    },
+    "mixed": {
+      "tp": 284,
+      "fp": 0,
+      "tn": 0,
+      "fn": 0,
+      "n": 284,
+      "n_errors": 0,
+      "recall": 1.0,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0
+    },
+    "wild": {
+      "tp": 269,
+      "fp": 0,
+      "tn": 0,
+      "fn": 93,
+      "n": 362,
+      "n_errors": 0,
+      "recall": 0.7430939226519337,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.8526148969889066,
+      "accuracy": 0.7430939226519337
+    }
+  },
   "isotonic_points": 45,
   "eval_intervals_at_tuned": {
     "recall": {
