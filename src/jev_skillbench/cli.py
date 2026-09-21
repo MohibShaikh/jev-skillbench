@@ -12,7 +12,12 @@ from pathlib import Path
 import typer
 from dotenv import load_dotenv
 
-from .dataset import DEFAULT_MAX_FILE_TOKENS, DEFAULT_MAX_TOTAL_TOKENS, load_benchmark
+from .dataset import (
+    DEFAULT_MAX_FILE_TOKENS,
+    DEFAULT_MAX_TOTAL_TOKENS,
+    POLICY_VERSION,
+    load_benchmark,
+)
 from .detect import (
     completed_ids,
     default_model_for,
@@ -174,6 +179,7 @@ def run(
             "include_behavior": not no_behavior,
             "max_total_tokens": max_total_tokens,
             "max_file_tokens": max_file_tokens,
+            "policy_version": POLICY_VERSION,
             "ids_from": str(ids_from) if ids_from else None,
             "n_planned": len(items),
             "n_resumed": len(already),

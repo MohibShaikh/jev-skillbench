@@ -11,6 +11,7 @@ falls back to parsing a `__<VECTOR>_<Bxx>` suffix out of the directory name.
 
 from __future__ import annotations
 
+import hashlib
 import random
 import re
 from dataclasses import dataclass, field
@@ -21,6 +22,12 @@ import tiktoken
 from .questions import BEHAVIORS
 
 MANIFEST_NAME = "_source_inventory.txt"
+
+# Bump when the state-building policy changes, so records can be grouped by it.
+POLICY_VERSION = 2
+
+_BLANK_RUN = re.compile(r"\n{3,}")
+_TRAILING_WS = re.compile(r"[ \t]+\n")
 
 # Jev 1.13 accepts 32k tokens for state plus the longest question. Stay under it.
 DEFAULT_MAX_TOTAL_TOKENS = 30_000
@@ -62,6 +69,12 @@ class FilePart:
     truncated: bool = False
 
 
+def _normalize(text: str) -> str:
+    text = _TRAILING_WS.sub("\n", text)
+    text = _BLANK_RUN.sub("\n\n", text)
+    return text.strip()
+
+
 @dataclass
 class SkillItem:
     id: str
@@ -73,6 +86,7 @@ class SkillItem:
     root: Path
     files: list[FilePart] = field(default_factory=list)
     state_tokens: int = 0
+    duplicates: int = 0
     truncated: bool = False
 
     def state(self) -> dict:
@@ -126,12 +140,16 @@ def load_manifest(path: str | Path) -> dict[str, dict]:
     return out
 
 
-def _read_skill(root: Path, max_file_tokens: int, max_total_tokens: int) -> tuple[list[FilePart], int, bool]:
+def _read_skill(
+    root: Path, max_file_tokens: int, max_total_tokens: int, normalize: bool = True
+) -> tuple[list[FilePart], int, bool, int]:
     candidates = [p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in TEXT_SUFFIXES]
     ordered = sorted(candidates, key=lambda p: (_priority(p.relative_to(root).as_posix()), p.relative_to(root).as_posix()))
     parts: list[FilePart] = []
     total = 0
     truncated = False
+    duplicates = 0
+    seen: set[str] = set()
     for path in ordered:
         try:
             raw = path.read_bytes()
@@ -139,7 +157,17 @@ def _read_skill(root: Path, max_file_tokens: int, max_total_tokens: int) -> tupl
             continue
         if b"\x00" in raw[:1024]:
             continue
-        tokens = _ENCODER.encode(raw.decode("utf-8", errors="replace"), disallowed_special=())
+        text = raw.decode("utf-8", errors="replace")
+        if normalize:
+            text = _normalize(text)
+        if not text:
+            continue
+        digest = hashlib.sha1(text.encode("utf-8")).hexdigest()
+        if digest in seen:
+            duplicates += 1
+            continue
+        seen.add(digest)
+        tokens = _ENCODER.encode(text, disallowed_special=())
         if len(tokens) > max_file_tokens:
             tokens = tokens[:max_file_tokens]
             truncated = True
@@ -153,7 +181,7 @@ def _read_skill(root: Path, max_file_tokens: int, max_total_tokens: int) -> tupl
         total += len(tokens)
         rel = path.relative_to(root).as_posix()
         parts.append(FilePart(path=rel, content=_ENCODER.decode(tokens)))
-    return parts, total, truncated
+    return parts, total, truncated, duplicates
 
 
 def load_benchmark(
@@ -165,6 +193,7 @@ def load_benchmark(
     only_generated: bool = False,
     seed: int = 0,
     read_files: bool = True,
+    normalize: bool = True,
 ) -> list[SkillItem]:
     root = Path(skills_root)
     malware = root / "malware"
@@ -205,8 +234,11 @@ def load_benchmark(
 
     if read_files:
         for item in items:
-            item.files, item.state_tokens, item.truncated = _read_skill(
-                item.root, max_file_tokens=max_file_tokens, max_total_tokens=max_total_tokens
+            item.files, item.state_tokens, item.truncated, item.duplicates = _read_skill(
+                item.root,
+                max_file_tokens=max_file_tokens,
+                max_total_tokens=max_total_tokens,
+                normalize=normalize,
             )
 
     if per_class is not None:

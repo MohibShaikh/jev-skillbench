@@ -44,6 +44,28 @@ def test_load_manifest(tmp_path: Path):
     assert labels["bytecode-tamper"] == {"split": "test", "vector": None, "behavior": "B3"}
 
 
+def test_normalization_and_dedup(tmp_path: Path):
+    mal = tmp_path / "malware"
+    ben = tmp_path / "benign"
+    skill = mal / "tool__CI_B1"
+    skill.mkdir(parents=True)
+    ben.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("line one   \n\n\n\nline two\t\n", encoding="utf-8")
+    (skill / "copy.md").write_text("line one   \n\n\n\nline two\t\n", encoding="utf-8")
+    (mal / "_source_inventory.txt").write_text(
+        "GENERATED  tool__CI_B1  <-  generated_malicious/CI/B1/new_script_file_2026",
+        encoding="utf-8",
+    )
+
+    items = {i.id: i for i in load_benchmark(tmp_path)}
+    item = items["tool__CI_B1"]
+    assert item.duplicates == 1
+    content = item.files[0].content
+    assert content == "line one\n\nline two"
+    assert "\t" not in content and "   \n" not in content
+    assert item.state_tokens > 0
+
+
 def test_load_benchmark(tmp_path: Path):
     mal = tmp_path / "malware"
     ben = tmp_path / "benign"
