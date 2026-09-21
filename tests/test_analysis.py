@@ -86,6 +86,17 @@ def test_stratified_split_keeps_both_classes():
     assert len(fit) == 10 and len(evaluation) == 10
 
 
+def test_stratified_split_keeps_vectors_on_both_sides():
+    records = []
+    for vec in ("ci", "pi", "mixed"):
+        records += [mk(f"{vec}_m{i}", 1, 0.9, vector=vec) for i in range(6)]
+    records += [mk(f"b{i}", 0, 0.1) for i in range(12)]
+    fit, evaluation = stratified_split(records, 0.5, seed=3)
+    for vec in ("ci", "pi", "mixed"):
+        assert sum(1 for r in fit if r.gold_vector == vec) == 3
+        assert sum(1 for r in evaluation if r.gold_vector == vec) == 3
+
+
 def test_analyze_holdout_structure():
     records = [mk(f"m{i}", 1, 0.4 + 0.01 * i) for i in range(30)]
     records += [mk(f"b{i}", 0, 0.0 + 0.001 * i) for i in range(30)]

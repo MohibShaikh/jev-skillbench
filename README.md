@@ -7,7 +7,8 @@ probabilities instead of prose. This repo asks one question with numbers: does a
 semantic judgment model close the instruction-level gap where static and LLM
 skill scanners fail, and what does that cost per skill?
 
-The harness is built and unit tested. No live numbers are in it yet.
+The harness is built and unit tested. A preliminary 100-skill result is under
+[Results](#results); a full 7,944-skill run supersedes it.
 
 ## Why this gap
 
@@ -76,6 +77,12 @@ Arms:
 
 Thresholds and cost are the two things to fit on validation data, not on test.
 
+Jev bills input at $42 per billion tokens, which is $0.042 per million, and output
+is free. The chat-model baselines bill per million tokens on both sides, so the
+`llm` arm costs far more than the `jev` arm and the gap depends entirely on the
+pinned model. Measure it on 100 skills with `--ids-from` before extrapolating, and
+put the cost gap in the results table next to recall.
+
 ## Quickstart
 
 ```bash
@@ -107,6 +114,9 @@ These rules exist because an earlier run was lost to a careless delete.
 
 - Every run writes to `results/<UTC timestamp>-<arm>/` and nothing there is
   deleted. `run_dir` selects an existing directory to resume into.
+- Runs that produced no data, for example a run blocked on credits, move to
+  `results/_failed/`. They are kept on disk but not published, and re-running the
+  same directory resumes them once the blocker clears.
 - `meta.json` in each run records the model, backend, git sha, sample size,
   truncation budget, and seed, so a result can be traced to the code that made it.
 - The `llm` arm takes `--ids-from <jev run>/jev.jsonl` so both arms score the exact
@@ -176,6 +186,9 @@ Known caveats to state in any write-up:
   SKILL.md then code. Report recall split on `truncated`; if truncated skills are
   missed more often, the budget is hiding malicious code.
 - n=100. Every interval above is wide. Nothing here is a benchmark result.
+- The held-out figures come from about 25 benign samples per side, so one false
+  positive moves FPR by roughly 4 points, and isotonic on 50 points can overfit.
+  Do not quote them; the full run is the fix.
 - The wild subset is narrow and dominated by one campaign. Do not present
   source-conditioned results as general.
 - The taxonomy covers 9,740 identities in the second dataset but 3,944 here.

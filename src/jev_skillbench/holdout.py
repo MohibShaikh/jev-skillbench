@@ -17,10 +17,15 @@ def stratified_split(
     records: list[Record], fit_fraction: float = 0.5, seed: int = 0
 ) -> tuple[list[Record], list[Record]]:
     rng = random.Random(seed)
+    groups: dict[tuple[int, str, str | None], list[Record]] = {}
+    for record in records:
+        if record.prob_malicious is None:
+            continue
+        groups.setdefault((record.label, record.split, record.gold_vector), []).append(record)
     fit: list[Record] = []
     evaluation: list[Record] = []
-    for label in (0, 1):
-        pool = [r for r in records if r.label == label and r.prob_malicious is not None]
+    for key in sorted(groups, key=str):
+        pool = groups[key]
         rng.shuffle(pool)
         cut = round(len(pool) * fit_fraction)
         fit.extend(pool[:cut])
