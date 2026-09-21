@@ -194,15 +194,15 @@ def run(
             "openrouter": ("OPENROUTER_API_KEY",),
         }[resolved]
         _require(f"jev via {resolved}", *envs)
-        run_jev_sync(
-            items,
-            backend=resolved,
-            model=resolved_model,
-            concurrency=concurrency,
-            include_behavior=not no_behavior,
-            sink=sink,
-            max_retries=max_retries,
-        )
+        kwargs = {
+            "model": resolved_model,
+            "concurrency": concurrency,
+            "include_behavior": not no_behavior,
+            "sink": sink,
+        }
+        if resolved in {"vercel", "openrouter"}:
+            kwargs["max_retries"] = max_retries
+        run_jev_sync(items, backend=resolved, **kwargs)
     else:
         _require("llm", "OPENAI_API_KEY")
         run_llm_sync(

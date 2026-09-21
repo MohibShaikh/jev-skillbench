@@ -1,9 +1,9 @@
 {
   "arm": "jev",
-  "backend": "vercel",
-  "model": "typesafe-ai/jev",
-  "timestamp": "20260921T093258Z",
-  "git_sha": "ebcd8bc",
+  "backend": "sdk",
+  "model": "jev-1.13.0",
+  "timestamp": "20260921T095244Z",
+  "git_sha": "10e30e4",
   "dataset": "data/MalSkillBench/Dataset/Skills",
   "per_class": null,
   "limit": null,

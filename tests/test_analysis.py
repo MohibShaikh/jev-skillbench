@@ -123,3 +123,30 @@ def test_system_prompt_uses_same_questions():
     assert "B10" in prompt
     without = system_prompt(include_behavior=False)
     assert "B10" not in without
+
+
+def test_backend_model_defaults_and_resolution(monkeypatch):
+    from jev_skillbench import detect
+
+    monkeypatch.delenv("AI_GATEWAY_API_KEY", raising=False)
+    monkeypatch.delenv("VERCEL_API_KEY", raising=False)
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    assert detect.resolve_backend("auto") == "sdk"
+    assert detect.default_model_for("vercel") == "typesafe-ai/jev"
+    assert detect.default_model_for("sdk") == "jev-1.13.0"
+    monkeypatch.setenv("VERCEL_API_KEY", "vck_x")
+    assert detect.resolve_backend("auto") == "vercel"
+    monkeypatch.setenv("TYPESAFE_API_KEY", "apikey_x")
+    assert detect.resolve_backend("auto") == "vercel"
+    assert detect.resolve_backend("sdk") == "sdk"
+
+
+def test_sdk_runner_rejects_unknown_kwargs():
+    import inspect
+
+    from jev_skillbench.detect import run_jev_sdk
+
+    params = inspect.signature(run_jev_sdk).parameters
+    assert "sink" in params
+    assert "max_retries" not in params
