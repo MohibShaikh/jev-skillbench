@@ -11,6 +11,7 @@ import asyncio
 import json
 import os
 import time
+from dataclasses import replace
 
 import httpx
 
@@ -134,3 +135,30 @@ def cascade_decision(
     if llm_prob is None:
         return int(jev_prob >= 0.5)
     return int(llm_prob >= 0.5)
+
+
+def cascade_records(
+    jev: list[Record],
+    llm: list[Record],
+    t_low: float = 0.2,
+    t_high: float = 0.8,
+) -> tuple[list[Record], dict]:
+    """One hard-decision record per Jev record, keyed by (split, id).
+
+    An in-band skill with no usable LLM verdict (refusal, error) falls back to
+    Jev at 0.5. Cost is Jev's plus the LLM's for escalated skills.
+    """
+    verdicts = {(r.split, r.id): r for r in llm if r.prob_malicious is not None}
+    out: list[Record] = []
+    escalated = missing = 0
+    for j in jev:
+        if j.prob_malicious is None:
+            continue
+        in_band = t_low <= j.prob_malicious < t_high
+        v = verdicts.get((j.split, j.id)) if in_band else None
+        escalated += in_band
+        missing += in_band and v is None
+        decision = cascade_decision(j.prob_malicious, v.prob_malicious if v else None, t_low, t_high)
+        cost = (j.cost_usd or 0.0) + ((v.cost_usd or 0.0) if v else 0.0)
+        out.append(replace(j, arm="cascade", prob_malicious=float(decision), cost_usd=cost))
+    return out, {"escalated": escalated, "missing_verdicts": missing}

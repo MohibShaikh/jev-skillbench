@@ -1,0 +1,19 @@
+{
+  "arm": "jev",
+  "backend": "sdk",
+  "model": "jev-1.13.0",
+  "timestamp": "20260923T123716Z",
+  "git_sha": "e98a367",
+  "dataset": "data/MalSkillBench/Dataset/Skills",
+  "per_class": null,
+  "limit": null,
+  "only_generated": false,
+  "include_behavior": true,
+  "max_total_tokens": 28000,
+  "max_file_tokens": 12000,
+  "policy_version": 3,
+  "effort": null,
+  "ids_from": "results/samples/strat1000.jsonl",
+  "n_planned": 1000,
+  "n_resumed": 0
+}

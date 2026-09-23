@@ -7,8 +7,9 @@ probabilities instead of prose. This repo asks one question with numbers: does a
 semantic judgment model close the instruction-level gap where static and LLM
 skill scanners fail, and what does that cost per skill?
 
-The harness is built and unit tested. The full benchmark result is under
-[Results](#results).
+Short answer, following TypeSafe's own verify-and-escalate pattern: Jev settles
+83% of skills on its own, and sending only the uncertain rest to an LLM reaches
+94% recall at 0.8% false positive rate. Details under [Results](#results).
 
 ## Why this gap
 
@@ -72,8 +73,10 @@ Arms:
 1. `jev` alone.
 2. `llm`, a frontier model asked the same questions as JSON. Deliberately the
    weakest fair LLM baseline.
-3. `cascade`, Jev triage with an LLM only on the ambiguous band.
-4. MalSkillBench's published baselines, cited, not rerun.
+3. `claude`, Claude through `claude -p` with tools and user settings stripped,
+   same questions.
+4. `cascade`, Jev triage with an LLM only on the ambiguous band.
+5. MalSkillBench's published baselines, cited, not rerun.
 
 Thresholds and cost are the two things to fit on validation data, not on test.
 
@@ -152,6 +155,65 @@ tests/
 
 ## Results
 
+### Cascade: Jev triages, an LLM checks only the uncertain band
+
+TypeSafe's docs describe this pattern directly: "send uncertain or failing cases
+to a person or reasoning model" (`typesafe-ai/skills`,
+`skills/typesafe-ai/SKILL.md`, lines 83 to 86). Here it is on malicious skills.
+
+Jev scores every skill. At or above 0.5 the skill is flagged, below 0.05 it
+passes, and only the band in between goes to an LLM. The rule for whether the
+cascade was worth building was frozen before the band run: the LLM had to catch
+at least 30 of the 100 in-band malicious skills while flagging at most 7 of the
+71 in-band benign ones. Both band models pass.
+
+Measured on a 1,000-skill sample stratified by label, split, and vector
+(`results/samples/strat1000.jsonl`, 498 malicious, 502 benign). The band is 171
+skills (17.1%).
+
+| operating point | recall | FPR | pi | wild | cost per 1k skills |
+|---|---|---|---|---|---|
+| Jev @0.5 | 0.755 | 0.000 | 0.689 | 0.444 | $0.18 |
+| Jev @0.09 (held-out tuned) | 0.906 | 0.040 | | | $0.18 |
+| Jev + gemini-2.5-flash on the band | 0.898 [0.869, 0.924] | 0.008 [0.002, 0.017] | 0.787 | 0.859 | about $0.49 |
+| Jev + Claude Opus 5 on the band | 0.944 [0.921, 0.964] | 0.008 [0.002, 0.017] | 0.902 | 0.902 | about $19.70 |
+
+In the band, Gemini caught 71 of 100 malicious skills and Opus caught 94; both
+flagged 4 of 71 benign. With the cheap model, the cascade matches the tuned
+threshold's recall at a fifth of its false positive rate. Opus adds about 4.6
+recall points, almost all on pi and wild skills. Wild recall goes from 0.444 on
+Jev alone to 0.86 to 0.90, the largest gain of any vector.
+
+Cost provenance: Jev's cost is what the API reported. The Claude figure is the
+subscription-equivalent cost `claude -p` reports ($0.114 per band skill), not
+money billed. The Gemini figure is estimated from measured tokens at $0.30 and
+$2.50 per Mtok, because the Vercel gateway does not return a cost.
+
+Artifacts: `results/cascade-claude-low/cascade.json`,
+`results/cascade-gemini/cascade.json`, band records in `results/claude-low/`
+and `results/band-gemini-flash/`, and the pre-registered rule in
+`results/claude-low/BAND_RESULT.md`.
+
+Checks on the cascade:
+
+- The 0.05 cutoff was read off the full-run reliability curve, which includes
+  the 1,000 sample. On the 6,907 skills outside the sample, 3.9% of malicious
+  skills score below 0.05 (4.4% in the sample) and the band is 19.1% of skills
+  (17.1% in the sample), so the cutoff is not tuned to the sample.
+- Those sub-0.05 malicious skills (22 in the sample: 15 pi, 7 wild) never reach
+  the LLM, which caps cascade recall near 0.96.
+- Jev scores vary a little between identical requests. Two fresh passes over the
+  sample (`results/repeat-strat1000-r1/`, `-r2/`) on 963 comparable skills: 64%
+  of scores identical, mean absolute difference 0.005, largest 0.08, and 5 to 6
+  skills crossing 0.5. Re-scoring the cascade on those passes gives recall 0.930
+  to 0.932 against 0.942, a lower bound, since 14 to 16 skills that moved into
+  the band have no LLM verdict and count as passes.
+- Claude Code routed some calls to secondary models (opus-4-8, haiku); each
+  record lists the models that took part. Two Opus refusals and one Gemini parse
+  failure count as passes.
+
+### Jev alone, full set
+
 Full benchmark run: all 7,944 skills (3,944 malicious, 4,000 benign), model
 `jev-1.13.0`, threshold 0.5, one TypeSafe request per skill. Artifacts in
 `results/20260921T095913Z-jev/` (raw `jev.jsonl`, `summary.json`, `holdout.json`,
@@ -184,9 +246,11 @@ lowest by a wide margin, so the weakness is in the ranking, not only the
 calibration. That lines up with what the MalSkillBench authors report: real-world
 malware is where detectors diverge.
 
-The main finding is calibration. Jev is underconfident on this domain: almost
-nothing benign scores above 0.2, so the 0.5 cutoff discards recall. On a held-out
-split stratified by label, split, and attack vector:
+The default 0.5 cutoff is conservative for this domain: almost nothing benign
+scores above 0.2. TypeSafe's docs say to evaluate thresholds on your own data and
+to validate calibration in the target domain (`SKILL.md`, lines 132 to 133 and
+143), so that is what `evaluate` does. On a held-out split stratified by label,
+split, and attack vector:
 
 | operating point | recall | FPR |
 |---|---|---|
@@ -194,10 +258,10 @@ split stratified by label, split, and attack vector:
 | tuned 0.09 | 0.916 | 0.049 |
 
 Isotonic calibration fit on one half and scored on the other cuts ECE from 0.123
-to 0.010 and Brier from 0.093 to 0.049. So Jev detects malicious skills well and
-its probabilities need recalibrating for this domain. The recall gain at the tuned
-threshold costs about 5% FPR, so the operating point is a policy choice, not a
-free win.
+to 0.010 and Brier from 0.093 to 0.049. The ranking is strong and a
+domain-specific threshold recovers most of the recall. The gain costs about 5%
+FPR, so the operating point is a policy choice, not a free win, and the cascade
+above gets similar recall without that cost.
 
 Cost was $1.38 for the full set, $0.174 per 1,000 skills at $0.042 per Mtok input
 with output free. p50 latency 391 ms, p95 669 ms.
@@ -215,8 +279,16 @@ Known caveats to state in any write-up:
 - Model aliases move between releases. Pin an exact version, as this run does.
 - The wild subset is narrow and dominated by one campaign. Do not present
   source-conditioned results as general.
-- No baseline has run yet. The `llm` arm and the cascade are built but unrun, so
-  no claim here compares Jev to another detector.
+- The LLMs only ever see the uncertain band, so nothing here is a head-to-head
+  between Jev and an LLM. Full-set LLM baselines are MalSkillBench's published
+  numbers, cited, not rerun.
+- Cascade numbers come from a 1,000-skill sample, not the full set.
+- On 2026-09-23, 21 of the 1,000 sample requests to `api.typesafe.ai` were
+  blocked by the edge firewall with a 403, 6 of them benign skills, and stayed
+  blocked on a serial retry. The same skills went through on 2026-09-21. The
+  repeat-run comparison excludes them.
+- The repeat passes used the current 28k state budget; the original run and both
+  band runs used 30k. The repeat comparison uses only skills untruncated in both.
 - The taxonomy covers 9,740 identities in the second dataset but 3,944 here.
 - The earlier 100-skill smoke is kept in `results/20260921-jev-smoke/` for
   provenance only; do not quote it.
@@ -229,8 +301,36 @@ Known caveats to state in any write-up:
 .venv/bin/jev-skillbench score    --records results/<run>
 .venv/bin/jev-skillbench evaluate --records results/<run>
 .venv/bin/jev-skillbench report   --records results/<run>
+.venv/bin/jev-skillbench cascade  --jev-records results/samples/strat1000.jsonl \
+    --llm-records results/claude-low/claude.jsonl --t-low 0.05 --t-high 0.5 \
+    --run-dir results/cascade-claude-low
 ```
+
+`cascade --llm-records` scores existing band records offline without new calls.
+Without it, `cascade --model <id>` calls the LLM on the band first.
+
+## Related work
+
+From the awesome-jev catalog, checked 2026-09-23. None benchmark malicious agent
+skills.
+
+- `jev-sec-bench`: prompt injection and vulnerable code, not skills.
+- `shade-arena-jev-monitor`: Jev as a runtime monitor for agent sabotage.
+- `jev-phishing-bench`, `jev-secret-detection`: security classification in
+  other domains.
+- `jev-calibration-audit`: calibration measured across domains, with results
+  that differ in direction by domain. This repo adds a security domain with
+  intervals.
+- `jev-calibrate`: held-out threshold tuning against your own labels, the same
+  method as `evaluate`.
+- `triagedy`: security alert triage with Jev and policy kept in code.
+- `jev-guard`, `is-malicious`: tools that scan skills or code with Jev. The
+  numbers here may help pick their thresholds.
 
 ## License
 
-Code: yours to choose. Dataset: academic research use only, per MalSkillBench.
+Code and result records: MIT, see [LICENSE](LICENSE). The records hold skill
+ids, labels, and scores, not skill contents.
+
+The MalSkillBench dataset is not included and stays under its own terms:
+academic research use only. `fetch` downloads it separately.

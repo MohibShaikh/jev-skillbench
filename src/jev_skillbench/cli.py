@@ -28,8 +28,8 @@ from .detect import (
     write_records,
 )
 from .holdout import analyze_holdout
-from .llm import cascade_decision, run_llm_sync
-from .metrics import summarize
+from .llm import cascade_records, run_llm_sync
+from .metrics import bootstrap_ci, confusion, recall_by_vector, summarize
 from .report import summary_table, write_report
 
 load_dotenv()
@@ -187,6 +187,8 @@ def run(
             "max_file_tokens": max_file_tokens,
             "policy_version": POLICY_VERSION,
             "effort": effort or None,
+            "max_output_tokens": max_output_tokens if arm == "llm" else None,
+            "reasoning_effort": reasoning_effort or None,
             "ids_from": str(ids_from) if ids_from else None,
             "n_planned": len(items),
             "n_resumed": len(already),
@@ -280,49 +282,61 @@ def _records_file(path: Path) -> Path:
 @app.command()
 def cascade(
     jev_records: Path = typer.Option(Path("results"), help="Jev records file or run directory."),
+    llm_records: Path = typer.Option(None, help="Existing LLM or claude records; scores offline, no new calls."),
     run_dir: str = typer.Option("", help="Run directory for cascade output."),
     data: Path = typer.Option(Path(DEFAULT_DATA)),
-    model: str = typer.Option(..., help="Frontier LLM model id."),
+    model: str = typer.Option("", help="Frontier LLM model id, when calling the LLM."),
     t_low: float = typer.Option(0.2),
     t_high: float = typer.Option(0.8),
     concurrency: int = typer.Option(8),
+    bootstrap: int = typer.Option(1000),
 ) -> None:
     """Jev triages every skill; only the ambiguous band escalates to an LLM."""
-    rd = _run_dir(run_dir, "cascade")
-    out = rd / "cascade.jsonl"
-    jev = {r.id: r for r in read_records(_records_file(jev_records))}
-    items = load_benchmark(_skills_root(data), read_files=True)
-    escalate = [
-        i
-        for i in items
-        if i.id in jev and jev[i.id].prob_malicious is not None and t_low <= jev[i.id].prob_malicious < t_high
-    ]
-    typer.echo(f"escalating {len(escalate)} of {len(items)} to {model}")
-    done = completed_ids(out)
-    escalate = [i for i in escalate if (i.split, i.id) not in done]
-    if escalate:
-        write_records(out, run_llm_sync(escalate, model=model, concurrency=concurrency))
-    llm = {r.id: r for r in read_records(out)}
-    decisions = []
-    for item in items:
-        j = jev.get(item.id)
-        llm_rec = llm.get(item.id)
-        decisions.append(
-            cascade_decision(
-                j.prob_malicious if j else None,
-                llm_rec.prob_malicious if llm_rec else None,
-                t_low=t_low,
-                t_high=t_high,
-            )
-        )
-    labels = [i.label for i in items]
-    tp = sum(1 for d, y in zip(decisions, labels, strict=True) if d == 1 and y == 1)
-    fn = sum(1 for d, y in zip(decisions, labels, strict=True) if d == 0 and y == 1)
-    fp = sum(1 for d, y in zip(decisions, labels, strict=True) if d == 1 and y == 0)
-    tn = sum(1 for d, y in zip(decisions, labels, strict=True) if d == 0 and y == 0)
-    recall = tp / (tp + fn) if tp + fn else None
-    fpr = fp / (fp + tn) if fp + tn else None
-    typer.echo(json.dumps({"recall": recall, "fpr": fpr, "tp": tp, "fp": fp, "tn": tn, "fn": fn}, indent=2))
+    jev_path = _records_file(jev_records)
+    jev = read_records(jev_path)
+    if llm_records is None:
+        if not model:
+            raise typer.BadParameter("pass --model to call an LLM, or --llm-records to score offline")
+        rd = _run_dir(run_dir, "cascade")
+        llm_path = rd / "cascade.jsonl"
+        band = {
+            (r.split, r.id)
+            for r in jev
+            if r.prob_malicious is not None and t_low <= r.prob_malicious < t_high
+        }
+        todo = band - completed_ids(llm_path)
+        items = [i for i in load_benchmark(_skills_root(data)) if (i.split, i.id) in todo]
+        typer.echo(f"escalating {len(band)} of {len(jev)} to {model}, {len(items)} not yet done")
+        if items:
+            write_records(llm_path, run_llm_sync(items, model=model, concurrency=concurrency))
+    else:
+        llm_path = _records_file(llm_records)
+        rd = Path(run_dir) if run_dir else llm_path.parent
+    decided, counts = cascade_records(jev, read_records(llm_path), t_low, t_high)
+    cost = sum(r.cost_usd or 0.0 for r in decided)
+    result = {
+        "jev_records": str(jev_path),
+        "llm_records": str(llm_path),
+        "t_low": t_low,
+        "t_high": t_high,
+        "n": len(decided),
+        **counts,
+        "band_fraction": counts["escalated"] / len(decided) if decided else None,
+        "jev_at_t_high": confusion(jev, t_high).as_dict(),
+        "cascade": confusion(decided).as_dict(),
+        "intervals": {
+            "recall": bootstrap_ci(decided, lambda r: confusion(r).recall, bootstrap),
+            "fpr": bootstrap_ci(decided, lambda r: confusion(r).fpr, bootstrap),
+        },
+        "jev_by_vector_at_t_high": {k: v.as_dict() for k, v in recall_by_vector(jev, t_high).items()},
+        "cascade_by_vector": {k: v.as_dict() for k, v in recall_by_vector(decided).items()},
+        "cost_usd": cost,
+        "cost_per_1k": cost / len(decided) * 1000 if decided else None,
+    }
+    rd.mkdir(parents=True, exist_ok=True)
+    (rd / "cascade.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    typer.echo(json.dumps(result, indent=2))
+    typer.echo(f"wrote {rd / 'cascade.json'}")
 
 
 @app.command()

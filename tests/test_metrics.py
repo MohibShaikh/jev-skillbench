@@ -1,5 +1,5 @@
 from jev_skillbench.detect import Record
-from jev_skillbench.llm import cascade_decision
+from jev_skillbench.llm import cascade_decision, cascade_records
 from jev_skillbench.metrics import brier, confusion, ece, recall_by_vector, summarize
 
 
@@ -69,3 +69,12 @@ def test_cascade_decision():
     assert cascade_decision(0.5, 0.9, 0.2, 0.8) == 1
     assert cascade_decision(0.5, 0.1, 0.2, 0.8) == 0
     assert cascade_decision(0.5, None, 0.2, 0.8) == 1
+
+
+def test_cascade_records_keys_on_split_and_falls_back():
+    jev = [mk("a", 1, 0.9), mk("b", 1, 0.3), mk("c", 0, 0.3), mk("d", 0, 0.01)]
+    other_split = Record("b", 1, "wild", None, None, "llm", prob_malicious=0.0)
+    llm = [mk("b", 1, 0.95, arm="llm"), other_split, mk("c", 0, None, arm="llm")]
+    decided, counts = cascade_records(jev, llm, t_low=0.05, t_high=0.5)
+    assert [r.prob_malicious for r in decided] == [1.0, 1.0, 0.0, 0.0]
+    assert counts == {"escalated": 2, "missing_verdicts": 1}

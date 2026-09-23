@@ -1,0 +1,160 @@
+{
+  "jev_records": "results/samples/strat1000.jsonl",
+  "llm_records": "results/claude-low/claude.jsonl",
+  "t_low": 0.05,
+  "t_high": 0.5,
+  "n": 1000,
+  "escalated": 171,
+  "missing_verdicts": 2,
+  "band_fraction": 0.171,
+  "jev_at_t_high": {
+    "tp": 376,
+    "fp": 0,
+    "tn": 502,
+    "fn": 122,
+    "n": 1000,
+    "n_errors": 0,
+    "recall": 0.7550200803212851,
+    "fpr": 0.0,
+    "precision": 1.0,
+    "f1": 0.860411899313501,
+    "accuracy": 0.878
+  },
+  "cascade": {
+    "tp": 470,
+    "fp": 4,
+    "tn": 498,
+    "fn": 28,
+    "n": 1000,
+    "n_errors": 0,
+    "recall": 0.9437751004016064,
+    "fpr": 0.00796812749003984,
+    "precision": 0.9915611814345991,
+    "f1": 0.9670781893004115,
+    "accuracy": 0.968
+  },
+  "intervals": {
+    "recall": {
+      "point": 0.9437751004016064,
+      "lo": 0.9214876033057852,
+      "hi": 0.9637096774193549,
+      "n_boot": 1000
+    },
+    "fpr": {
+      "point": 0.00796812749003984,
+      "lo": 0.001937984496124031,
+      "hi": 0.01646090534979424,
+      "n_boot": 1000
+    }
+  },
+  "jev_by_vector_at_t_high": {
+    "ci": {
+      "tp": 155,
+      "fp": 0,
+      "tn": 0,
+      "fn": 15,
+      "n": 170,
+      "n_errors": 0,
+      "recall": 0.9117647058823529,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.9538461538461539,
+      "accuracy": 0.9117647058823529
+    },
+    "mixed": {
+      "tp": 67,
+      "fp": 0,
+      "tn": 0,
+      "fn": 5,
+      "n": 72,
+      "n_errors": 0,
+      "recall": 0.9305555555555556,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.9640287769784173,
+      "accuracy": 0.9305555555555556
+    },
+    "pi": {
+      "tp": 113,
+      "fp": 0,
+      "tn": 0,
+      "fn": 51,
+      "n": 164,
+      "n_errors": 0,
+      "recall": 0.6890243902439024,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.815884476534296,
+      "accuracy": 0.6890243902439024
+    },
+    "wild": {
+      "tp": 41,
+      "fp": 0,
+      "tn": 0,
+      "fn": 51,
+      "n": 92,
+      "n_errors": 0,
+      "recall": 0.44565217391304346,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.6165413533834586,
+      "accuracy": 0.44565217391304346
+    }
+  },
+  "cascade_by_vector": {
+    "ci": {
+      "tp": 167,
+      "fp": 0,
+      "tn": 0,
+      "fn": 3,
+      "n": 170,
+      "n_errors": 0,
+      "recall": 0.9823529411764705,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.9910979228486646,
+      "accuracy": 0.9823529411764705
+    },
+    "mixed": {
+      "tp": 72,
+      "fp": 0,
+      "tn": 0,
+      "fn": 0,
+      "n": 72,
+      "n_errors": 0,
+      "recall": 1.0,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0
+    },
+    "pi": {
+      "tp": 148,
+      "fp": 0,
+      "tn": 0,
+      "fn": 16,
+      "n": 164,
+      "n_errors": 0,
+      "recall": 0.9024390243902439,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.9487179487179488,
+      "accuracy": 0.9024390243902439
+    },
+    "wild": {
+      "tp": 83,
+      "fp": 0,
+      "tn": 0,
+      "fn": 9,
+      "n": 92,
+      "n_errors": 0,
+      "recall": 0.9021739130434783,
+      "fpr": null,
+      "precision": 1.0,
+      "f1": 0.9485714285714286,
+      "accuracy": 0.9021739130434783
+    }
+  },
+  "cost_usd": 19.733157944000002,
+  "cost_per_1k": 19.733157944000002
+}
