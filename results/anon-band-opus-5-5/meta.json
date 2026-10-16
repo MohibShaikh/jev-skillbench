@@ -1,0 +1,21 @@
+{
+  "arm": "claude",
+  "backend": null,
+  "model": "claude-opus-5-5",
+  "timestamp": "20261014T131112Z",
+  "git_sha": "fc1d276",
+  "dataset": "data/MalSkillBench/Dataset/Skills",
+  "per_class": null,
+  "limit": null,
+  "only_generated": false,
+  "include_behavior": true,
+  "max_total_tokens": 30000,
+  "max_file_tokens": 12000,
+  "policy_version": 4,
+  "effort": "low",
+  "max_output_tokens": null,
+  "reasoning_effort": null,
+  "ids_from": "results/samples/band_anon_005_050.jsonl",
+  "n_planned": 32,
+  "n_resumed": 142
+}

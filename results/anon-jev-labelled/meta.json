@@ -1,0 +1,21 @@
+{
+  "arm": "jev",
+  "backend": "sdk",
+  "model": "jev-1.13.0",
+  "timestamp": "20261014T065109Z",
+  "git_sha": "fc1d276",
+  "dataset": "data/MalSkillBench/Dataset/Skills",
+  "per_class": null,
+  "limit": null,
+  "only_generated": false,
+  "include_behavior": true,
+  "max_total_tokens": 30000,
+  "max_file_tokens": 12000,
+  "policy_version": 4,
+  "effort": null,
+  "max_output_tokens": null,
+  "reasoning_effort": null,
+  "ids_from": "results/samples/labelled_names.jsonl",
+  "n_planned": 1466,
+  "n_resumed": 0
+}

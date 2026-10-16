@@ -9,7 +9,9 @@ skill scanners fail, and what does that cost per skill?
 
 Short answer, following TypeSafe's own verify-and-escalate pattern: Jev settles
 83% of skills on its own, and sending only the uncertain rest to an LLM reaches
-94% recall at 0.8% false positive rate. Details under [Results](#results).
+95% recall at 0.8% false positive rate. Running Haiku 5.5 on every skill instead
+gets similar recall to its cascade but flags 4.6% of benign skills against 1.0%.
+Details under [Results](#results).
 
 ## Why this gap
 
@@ -81,10 +83,13 @@ Arms:
 Thresholds and cost are the two things to fit on validation data, not on test.
 
 Jev bills input at $42 per billion tokens ($0.042 per million) and output is free.
-The 7,944 states total 23.9M tokens, so the full `jev` run costs about $1.00. The
-chat baselines bill per million tokens on both sides, so the same states cost about
-$1.45 for `openai/gpt-5-nano`, $7.24 for `openai/gpt-5-mini`, and $8.75 for
-`google/gemini-2.5-flash`, assuming 80 output tokens per skill. Pin the model,
+The 7,944 states hold 23.8M tokens of file content, but the full `jev` run billed
+32.8M input tokens once the JSON wrapper and questions are counted, so it cost
+$1.38. The chat baselines bill per million tokens on both sides. A pre-run
+estimate from file content alone put the same states at about $1.45 for
+`openai/gpt-5-nano`, $7.24 for `openai/gpt-5-mini`, and $8.75 for
+`google/gemini-2.5-flash` at 80 output tokens per skill; treat those as lower
+bounds, since they leave out the prompt and wrapper. Pin the model,
 measure 100 skills with `--ids-from`, then extrapolate, and put the cost gap in
 the results table next to recall. Note that $2 of OpenRouter credit covers the full
 Jev run but not a full chat baseline on any frontier model.
@@ -165,79 +170,147 @@ Jev scores every skill. At or above 0.5 the skill is flagged, below 0.05 it
 passes, and only the band in between goes to an LLM. The rule for whether the
 cascade was worth building was frozen before the band run: the LLM had to catch
 at least 30 of the 100 in-band malicious skills while flagging at most 7 of the
-71 in-band benign ones. Both band models pass.
+71 in-band benign ones. Both band models pass, before and after the name fix
+below.
 
 Measured on a 1,000-skill sample stratified by label, split, and vector
-(`results/samples/strat1000.jsonl`, 498 malicious, 502 benign). The band is 171
-skills (17.1%).
+(`results/samples/strat1000_anon.jsonl`, 498 malicious, 502 benign). The band is
+174 skills (17.4%): 103 malicious, 71 benign.
 
 | operating point | recall | FPR | pi | wild | cost per 1k skills |
 |---|---|---|---|---|---|
-| Jev @0.5 | 0.755 | 0.000 | 0.689 | 0.444 | $0.18 |
-| Jev @0.09 (held-out tuned) | 0.906 | 0.040 | | | $0.18 |
-| Jev + gemini-2.5-flash on the band | 0.898 [0.869, 0.924] | 0.008 [0.002, 0.017] | 0.787 | 0.859 | about $0.49 |
-| Jev + Claude Opus 5 on the band | 0.944 [0.921, 0.964] | 0.008 [0.002, 0.017] | 0.902 | 0.902 | about $19.70 |
+| Jev @0.5 | 0.751 | 0.000 | 0.677 | 0.446 | $0.18 |
+| Jev @0.09 (fit on overlapping data) | 0.906 | 0.040 | | | $0.18 |
+| Jev + gemini-2.5-flash on the band | 0.882 [0.851, 0.908] | 0.008 [0.002, 0.017] | 0.744 | 0.859 | about $0.49 |
+| Jev + Claude Opus 5 on the band | 0.946 [0.924, 0.966] | 0.008 [0.002, 0.016] | 0.909 | 0.902 | about $19.30 |
+| Jev + Claude Opus 5.5 on the band | 0.920 [0.895, 0.943] | 0.002 [0.000, 0.006] | 0.896 | 0.880 | about $12.40 |
+| Jev + Claude Haiku 5.5 on the band | 0.918 [0.892, 0.942] | 0.010 [0.002, 0.020] | 0.848 | 0.913 | about $0.63 |
+| Claude Haiku 5.5 alone, every skill | 0.934 [0.911, 0.954] | 0.046 [0.027, 0.064] | 0.884 | 0.967 | about $2.23 |
 
-In the band, Gemini caught 71 of 100 malicious skills and Opus caught 94; both
-flagged 4 of 71 benign. With the cheap model, the cascade matches the tuned
-threshold's recall at a fifth of its false positive rate. Opus adds about 4.6
-recall points, almost all on pi and wild skills. Wild recall goes from 0.444 on
-Jev alone to 0.86 to 0.90, the largest gain of any vector.
+In the band, Gemini caught 65 of 103 malicious skills and Opus caught 97; both
+flagged 4 of 71 benign. With the cheap model, the cascade comes within 2.4 recall
+points of the 0.09 threshold at a fifth of its false positive rate. Opus adds
+about 6.4 recall points over Gemini, all on pi and wild skills. Wild recall goes
+from 0.446 on Jev alone to 0.86 to 0.91, the largest gain of any vector. "Wild"
+here and in the full-set table includes the 27 tool-test entries.
 
-Cost provenance: Jev's cost is what the API reported. The Claude figure is the
-subscription-equivalent cost `claude -p` reports ($0.114 per band skill), not
-money billed. The Gemini figure is estimated from measured tokens at $0.30 and
-$2.50 per Mtok, because the Vercel gateway does not return a cost.
+Opus 5.5 caught 84 and Haiku 5.5 caught 83 of the 103, flagging 1 and 5 of the
+71 benign. Both ran at `--effort low` to match the Opus 5 run, below their
+`medium` default. Opus 5.5 is the most conservative band model: lowest false
+positive rate, 13 fewer catches than Opus 5. Haiku 5.5 matches its recall at
+about a twentieth of the cost and beats Gemini by 3.6 points at a similar price.
+Both score many missed malicious skills between 0.2 and 0.5, so a lower LLM
+cutoff would trade false positives for recall; that cutoff was not fixed in
+advance and is not reported here.
 
-Artifacts: `results/cascade-claude-low/cascade.json`,
-`results/cascade-gemini/cascade.json`, band records in `results/claude-low/`
-and `results/band-gemini-flash/`, and the pre-registered rule in
-`results/claude-low/BAND_RESULT.md`.
+Haiku 5.5 was also run alone on all 1,000 sample skills with the same settings
+(`results/anon-haiku-5-5-all/claude.jsonl`; every verdict from Haiku 5.5, no
+refusals or failures). It catches 465 of 498 malicious skills against the
+cascade's 457 and flags 23 of 502 benign skills against 5. The recall intervals
+overlap; the false positive intervals do not. Of the 15 malicious skills only
+Haiku alone catches, 12 score below 0.05 on Jev and never reach the band, so
+most of the recall gap is the 0.05 cutoff, not the model. Jev's sub-0.05 pass
+also removes 12 of Haiku's 23 false alarms. The other 11 were in the band,
+where the separate band run flagged 5: two Haiku calls on the same band skill
+disagree on 15 of 174. Running Haiku on every skill takes 1,000 calls instead
+of 174 and costs about 3.5 times as much, at a median 5.6 s per skill.
+
+The 0.09 row is not a held-out result for this sample: 963 of the 1,000 sample
+skills, including all 502 benign ones, fall in the half the threshold was fit
+on. The held-out figure is in the full-set section below.
+
+Cost provenance: Jev's cost is input tokens times $0.042 per Mtok, computed in
+`detect.py`. The Claude figure is the subscription-equivalent cost `claude -p`
+reports (about $0.11 per band skill), not money billed, and includes $0.23 spent
+on the two refused calls. Opus 5.5 and Haiku 5.5 are the same kind of figure;
+Opus 5.5 includes $0.33 spent on refused attempts. The Gemini figure is estimated from measured tokens at
+$0.30 and $2.50 per Mtok, because the Vercel gateway does not return a cost.
+
+Artifacts: `results/cascade-anon-claude/cascade.json`,
+`results/cascade-anon-gemini/cascade.json`, band records in
+`results/anon-band-claude/merged.jsonl` and `results/anon-band-gemini/merged.jsonl`,
+`results/cascade-anon-{opus-5-5,haiku-5-5}/` with band records in
+`results/anon-band-{opus-5-5,haiku-5-5}/claude.jsonl`, Haiku alone in
+`results/anon-haiku-5-5-all/claude.jsonl`, and the pre-registered rule in `results/claude-low/BAND_RESULT.md`. The
+pre-fix cascade is kept in `results/cascade-claude-low/` and
+`results/cascade-gemini/`.
+
+#### Skill names leaked the label, now fixed
+
+MalSkillBench names generated skills with their gold label, for example
+`1k-cross-platform__CI_B4`, and the first runs sent that name to every detector
+as `skill.name`. 1,466 of the 3,214 generated skills carry the suffix; no benign
+skill does. Since policy 4, `display_name` in `dataset.py` strips the
+`__<VECTOR>_B<n>` segment before a state is built, and a scan of all 7,944
+states finds no label token left. Those 1,466 skills were re-scored with Jev
+(`results/anon-jev-labelled/`, $0.23), and the 21 of them now in the sample band
+were re-run with both band models (`results/anon-band-*/`).
+
+What the leak was worth, measured on the same skills:
+
+- Jev: recall at 0.5 on the 1,466 went from 0.872 to 0.869 (7 skills gained, 11
+  lost, mean absolute score change 0.008, close to run-to-run noise).
+  Vector-label accuracy dropped from 0.785 to 0.755, so the name helped label
+  the vector more than it helped detection.
+- Opus: flagged 18 of the 18 previously-banded skills with and without the label.
+- Gemini: flagged 18 of 18 with the label and 11 of 18 without. A control re-run
+  with the labels put back flagged 21 of 21
+  (`results/anon-band-gemini-control/`), so the drop comes from the name, not
+  from noise. Gemini's pre-fix cascade recall of 0.898 was inflated; 0.882 is the
+  clean figure.
 
 Checks on the cascade:
 
 - The 0.05 cutoff was read off the full-run reliability curve, which includes
   the 1,000 sample. On the 6,907 skills outside the sample, 3.9% of malicious
-  skills score below 0.05 (4.4% in the sample) and the band is 19.1% of skills
-  (17.1% in the sample), so the cutoff is not tuned to the sample.
-- Those sub-0.05 malicious skills (22 in the sample: 15 pi, 7 wild) never reach
+  skills score below 0.05 (4.2% in the sample) and the band is 19.1% of skills
+  (17.4% in the sample), so the cutoff is not tuned to the sample. The curve
+  did include these skills, so this is a consistency check, not a held-out test.
+- Those sub-0.05 malicious skills (21 in the sample: 14 pi, 7 wild) never reach
   the LLM, which caps cascade recall near 0.96.
 - Jev scores vary a little between identical requests. Two fresh passes over the
-  sample (`results/repeat-strat1000-r1/`, `-r2/`) on 963 comparable skills: 64%
-  of scores identical, mean absolute difference 0.005, largest 0.08, and 5 to 6
-  skills crossing 0.5. Re-scoring the cascade on those passes gives recall 0.930
-  to 0.932 against 0.942, a lower bound, since 14 to 16 skills that moved into
-  the band have no LLM verdict and count as passes.
-- Claude Code routed some calls to secondary models (opus-4-8, haiku); each
-  record lists the models that took part. Two Opus refusals and one Gemini parse
-  failure count as passes.
+  sample, taken before the name fix (`results/repeat-strat1000-r1/`, `-r2/`), on
+  963 comparable skills: 64% of scores identical, mean absolute difference
+  0.005, largest 0.08, and 5 to 6 skills crossing 0.5. On those same 963 skills
+  the pre-fix Opus cascade scores recall 0.942; re-scored on the two passes it
+  gives 0.930 to 0.932, a lower bound, since 12 to 14 skills that moved into the
+  band have no LLM verdict and count as passes.
+- Claude Code routed some Opus 5 calls to secondary models (opus-4-8, haiku);
+  each record lists the models that took part. Every Opus 5.5 and Haiku 5.5
+  verdict came from the named model. Two Opus 5 refusals, one Opus 5.5 refusal,
+  and one Gemini parse failure count as passes.
+- Calls that failed before reaching the model (usage limits, no tokens billed)
+  were retried until every band skill had a verdict or a refusal. Only the
+  latest attempt per skill is scored.
 
 ### Jev alone, full set
 
 Full benchmark run: all 7,944 skills (3,944 malicious, 4,000 benign), model
-`jev-1.13.0`, threshold 0.5, one TypeSafe request per skill. Artifacts in
-`results/20260921T095913Z-jev/` (raw `jev.jsonl`, `summary.json`, `holdout.json`,
-`report.md`, charts) with the run configuration in `meta.json`.
+`jev-1.13.0`, threshold 0.5, one TypeSafe request per skill. Scored records in
+`results/full-anon/`: the original run `results/20260921T095913Z-jev/` with the
+1,466 name-leak skills replaced by their re-score (see above). The original run
+keeps its `report.md`, charts, and run configuration in `meta.json`.
 
 | arm | model | n | recall | FPR | precision | F1 | Brier | ECE |
 |---|---|---|---|---|---|---|---|---|
-| jev | jev-1.13.0 | 7,907 | 0.755 | 0.0008 | 0.999 | 0.860 | 0.096 | 0.126 |
+| jev | jev-1.13.0 | 7,907 | 0.754 | 0.0008 | 0.999 | 0.860 | 0.096 | 0.126 |
 
-Bootstrap 95% intervals at threshold 0.5: recall [0.742, 0.770], FPR [0.000,
-0.002], Brier [0.090, 0.102], ECE [0.120, 0.133].
+Bootstrap 95% intervals at threshold 0.5: recall [0.740, 0.768], FPR [0.000,
+0.002], Brier [0.090, 0.101], ECE [0.120, 0.133].
 
 Recall by attack vector, at the default cutoff and at the tuned 0.09 threshold
 (tuned on the held-out half; both columns scored on the full set). Vector-label
-accuracy is 0.776.
+accuracy is 0.762. The wild row includes the 27 tool-test entries; wild alone
+is 281 of 699 at 0.5 (0.402).
 
 | vector | n | recall @0.5 | recall @0.09 | truncated |
 |---|---|---|---|---|
-| ci | 1,346 | 0.914 | 0.993 | 2 |
-| mixed | 568 | 0.905 | 1.000 | 0 |
-| pi | 1,300 | 0.715 | 0.884 | 1 |
+| ci | 1,346 | 0.912 | 0.993 | 2 |
+| mixed | 568 | 0.910 | 1.000 | 0 |
+| pi | 1,300 | 0.712 | 0.885 | 1 |
 | wild | 726 | 0.416 | 0.730 | 4 |
 
-At the default 0.5 cutoff, 3 benign skills out of 4,000 are flagged and 964
+At the default 0.5 cutoff, 3 benign skills out of 4,000 are flagged and 968
 malicious skills are missed. The wild subset is the weak spot, and it is not a
 truncation artifact: wild skills truncate 4 of 726 (0.6%) and are smaller than
 average (1,859 state tokens versus 2,834 for ci). 77 of the 84 truncated skills
@@ -254,7 +327,7 @@ split, and attack vector:
 
 | operating point | recall | FPR |
 |---|---|---|
-| default 0.5 | 0.763 | 0.001 |
+| default 0.5 | 0.761 | 0.001 |
 | tuned 0.09 | 0.916 | 0.049 |
 
 Isotonic calibration fit on one half and scored on the other cuts ECE from 0.123
@@ -264,7 +337,7 @@ FPR, so the operating point is a policy choice, not a free win, and the cascade
 above gets similar recall without that cost.
 
 Cost was $1.38 for the full set, $0.174 per 1,000 skills at $0.042 per Mtok input
-with output free. p50 latency 391 ms, p95 669 ms.
+with output free. p50 latency 391 ms, p95 669 ms, measured on the original run.
 
 Known caveats to state in any write-up:
 
@@ -273,15 +346,15 @@ Known caveats to state in any write-up:
   excluded from the metrics. The default budget is now 28k with headroom, so a
   fresh run does not hit this.
 - Truncation is a real confound, not a footnote: recall is 0.571 on the 84
-  truncated skills in the scored set versus 0.756 on the intact ones. n is small,
+  truncated skills in the scored set versus 0.755 on the intact ones. n is small,
   so the interval is wide, but the direction is consistent with the budget hiding
   malicious code.
 - Model aliases move between releases. Pin an exact version, as this run does.
 - The wild subset is narrow and dominated by one campaign. Do not present
   source-conditioned results as general.
-- The LLMs only ever see the uncertain band, so nothing here is a head-to-head
-  between Jev and an LLM. Full-set LLM baselines are MalSkillBench's published
-  numbers, cited, not rerun.
+- The only LLM run on every skill is Haiku 5.5, on the 1,000-skill sample; the
+  other LLMs saw only the band. Full-set LLM baselines are MalSkillBench's
+  published numbers, cited, not rerun.
 - Cascade numbers come from a 1,000-skill sample, not the full set.
 - On 2026-09-23, 21 of the 1,000 sample requests to `api.typesafe.ai` were
   blocked by the edge firewall with a 403, 6 of them benign skills, and stayed
@@ -301,9 +374,9 @@ Known caveats to state in any write-up:
 .venv/bin/jev-skillbench score    --records results/<run>
 .venv/bin/jev-skillbench evaluate --records results/<run>
 .venv/bin/jev-skillbench report   --records results/<run>
-.venv/bin/jev-skillbench cascade  --jev-records results/samples/strat1000.jsonl \
-    --llm-records results/claude-low/claude.jsonl --t-low 0.05 --t-high 0.5 \
-    --run-dir results/cascade-claude-low
+.venv/bin/jev-skillbench cascade  --jev-records results/samples/strat1000_anon.jsonl \
+    --llm-records results/anon-band-claude/merged.jsonl --t-low 0.05 --t-high 0.5 \
+    --run-dir results/cascade-anon-claude
 ```
 
 `cascade --llm-records` scores existing band records offline without new calls.

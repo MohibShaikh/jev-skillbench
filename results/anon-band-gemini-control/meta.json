@@ -1,0 +1,11 @@
+{
+  "arm": "llm",
+  "model": "google/gemini-2.5-flash",
+  "purpose": "Control for the name-leak test: same 21 band skills as results/anon-band-gemini/, with display_name patched to return the labelled directory name (policy 3 naming).",
+  "ids_from": "results/samples/band_anon_labelled.jsonl",
+  "max_total_tokens": 30000,
+  "max_file_tokens": 12000,
+  "max_output_tokens": 300,
+  "reasoning_effort": "none",
+  "date": "2026-10-14"
+}

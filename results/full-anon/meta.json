@@ -1,0 +1,7 @@
+{
+  "composed_from": [
+    "results/20260921T095913Z-jev/jev.jsonl",
+    "results/anon-jev-labelled/jev.jsonl"
+  ],
+  "note": "Full run with the 1,466 skills whose names carried __<VECTOR>_B<n> labels replaced by their policy-4 (anonymized name) re-score. Same model, backend, and 30k state budget."
+}
