@@ -24,7 +24,7 @@ from .questions import BEHAVIORS
 MANIFEST_NAME = "_source_inventory.txt"
 
 # Bump when the state-building policy changes, so records can be grouped by it.
-POLICY_VERSION = 3
+POLICY_VERSION = 4
 
 _BLANK_RUN = re.compile(r"\n{3,}")
 _TRAILING_WS = re.compile(r"[ \t]+\n")
@@ -38,6 +38,7 @@ DEFAULT_MAX_FILE_TOKENS = 12_000
 _ENCODER = tiktoken.get_encoding("cl100k_base")
 
 _SUFFIX = re.compile(r"__(?P<vector>CI|PI|MIXED)_(?P<behavior>B\d{1,2})(?:__|$)")
+_LABEL_SEGMENT = re.compile(r"__(?:CI|PI|MIXED)_B\d{1,2}(?=__|$)")
 _INVENTORY = re.compile(r"^(GENERATED|WILD|TEST)\s+(?P<entry>.+?)\s*<-\s*(?P<src>.+?)\s*$")
 _LABEL = re.compile(r"^(?:WILD|TEST)_LABEL\s+(?P<left>.+?)\s*<-\s*(?P<src>.*)$")
 
@@ -94,10 +95,15 @@ class SkillItem:
     def state(self) -> dict:
         return {
             "skill": {
-                "name": self.id,
+                "name": display_name(self.id),
                 "files": [{"path": f.path, "content": f.content} for f in self.files],
             }
         }
+
+
+def display_name(dirname: str) -> str:
+    """The skill name shown to detectors, without the benchmark's vector and behavior labels."""
+    return _LABEL_SEGMENT.sub("", dirname)
 
 
 def parse_name(dirname: str) -> tuple[str, str | None, str | None]:

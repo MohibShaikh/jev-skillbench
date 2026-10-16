@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from jev_skillbench.dataset import load_benchmark, load_manifest, parse_name
+from jev_skillbench.dataset import display_name, load_benchmark, load_manifest, parse_name
 
 
 def test_parse_name_with_labels():
@@ -102,3 +102,10 @@ def test_load_benchmark(tmp_path: Path):
 
     gen_only = load_benchmark(tmp_path, only_generated=True)
     assert {i.id for i in gen_only} == {"tool__CI_B1", "tool__PI_B10", "plain-name", "good-tool"}
+
+
+def test_display_name_strips_labels():
+    assert display_name("3d-games__CI_B2") == "3d-games"
+    assert display_name("000-foo__PI_B10") == "000-foo"
+    assert display_name("add-review-comment__MIXED_B8__Download_Execute") == "add-review-comment__Download_Execute"
+    assert display_name("1password") == "1password"

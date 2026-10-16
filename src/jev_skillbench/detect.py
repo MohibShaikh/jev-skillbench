@@ -337,16 +337,18 @@ def write_records(path: str | Path, records: list[Record]) -> None:
 
 
 def read_records(path: str | Path) -> list[Record]:
+    """One record per (split, id): a retry's line replaces the earlier attempt."""
     path = Path(path)
     if not path.exists():
         return []
-    out: list[Record] = []
+    out: dict[tuple[str, str], Record] = {}
     with path.open("r", encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
             if line:
-                out.append(Record(**json.loads(line)))
-    return out
+                rec = Record(**json.loads(line))
+                out[(rec.split, rec.id)] = rec
+    return list(out.values())
 
 
 def completed_ids(path: str | Path) -> set[tuple[str, str]]:

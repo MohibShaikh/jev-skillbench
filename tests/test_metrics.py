@@ -1,4 +1,4 @@
-from jev_skillbench.detect import Record
+from jev_skillbench.detect import Record, read_records, write_records
 from jev_skillbench.llm import cascade_decision, cascade_records
 from jev_skillbench.metrics import brier, confusion, ece, recall_by_vector, summarize
 
@@ -78,3 +78,21 @@ def test_cascade_records_keys_on_split_and_falls_back():
     decided, counts = cascade_records(jev, llm, t_low=0.05, t_high=0.5)
     assert [r.prob_malicious for r in decided] == [1.0, 1.0, 0.0, 0.0]
     assert counts == {"escalated": 2, "missing_verdicts": 1}
+
+
+def test_read_records_keeps_latest_attempt(tmp_path):
+    path = tmp_path / "llm.jsonl"
+    failed = mk("a", 1, None, arm="llm")
+    failed.error = "RuntimeError: usage limit"
+    write_records(path, [failed, mk("b", 0, 0.1, arm="llm"), mk("a", 1, 0.9, arm="llm")])
+    records = read_records(path)
+    assert [(r.id, r.prob_malicious, r.error) for r in records] == [("a", 0.9, None), ("b", 0.1, None)]
+
+
+def test_cascade_uses_latest_llm_verdict(tmp_path):
+    path = tmp_path / "llm.jsonl"
+    refused = mk("b", 1, None, arm="llm")
+    refused.error = "refusal"
+    write_records(path, [mk("b", 1, 0.95, arm="llm"), refused])
+    _, counts = cascade_records([mk("b", 1, 0.3)], read_records(path), t_low=0.05, t_high=0.5)
+    assert counts == {"escalated": 1, "missing_verdicts": 1}
