@@ -134,8 +134,10 @@ These rules exist because an earlier run was lost to a careless delete.
   same directory resumes them once the blocker clears.
 - `meta.json` in each run records the model, backend, git sha, sample size,
   truncation budget, and seed, so a result can be traced to the code that made it.
-- The `llm` arm takes `--ids-from <jev run>/jev.jsonl` so both arms score the exact
-  same skills with the same states and the same truncation.
+- The `llm` arm takes `--ids-from <jev run>/jev.jsonl` so both arms score the same
+  skills. States are rebuilt with the current preprocessing settings, so pass the
+  Jev run's `--max-total-tokens` (in its `meta.json`) to get the same states and
+  truncation. Every published band run used 30,000, the original run's budget.
 - Runs append to JSONL and resume by default. Every raw per-sample record is kept,
   including the model version, token counts, reported cost, and truncation flag.
 - Report bootstrap intervals with `score` and held-out calibration with
@@ -224,7 +226,8 @@ Cost provenance: Jev's cost is input tokens times $0.042 per Mtok, computed in
 reports (about $0.11 per band skill), not money billed, and includes $0.23 spent
 on the two refused calls. Opus 5.5 and Haiku 5.5 are the same kind of figure;
 Opus 5.5 includes $0.33 spent on refused attempts. The Gemini figure is estimated from measured tokens at
-$0.30 and $2.50 per Mtok, because the Vercel gateway does not return a cost.
+$0.30 and $2.50 per Mtok, because the Vercel gateway does not return a cost,
+and counts only the final attempt per skill.
 
 Artifacts: `results/cascade-anon-claude/cascade.json`,
 `results/cascade-anon-gemini/cascade.json`, band records in

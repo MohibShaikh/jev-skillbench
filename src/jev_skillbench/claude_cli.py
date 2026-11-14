@@ -59,10 +59,7 @@ def _call(state: dict, model: str, cwd: str, timeout: float, effort: str | None 
     if proc.returncode != 0:
         detail = proc.stderr.strip() or proc.stdout.strip() or f"exit {proc.returncode}"
         raise RuntimeError(detail[:300])
-    payload = json.loads(proc.stdout)
-    if payload.get("is_error"):
-        raise RuntimeError(str(payload.get("result"))[:200])
-    return payload
+    return json.loads(proc.stdout)
 
 
 def _extract_json(text: str) -> dict:
@@ -92,9 +89,14 @@ def run_claude_cli(
     for item in items:
         rec = _base_record(item, "claude")
         start = time.perf_counter()
+        spent = 0.0
         for attempt in range(max_retries + 1):
             try:
                 payload = _call(item.state(), model, cwd, timeout, effort)
+                # Count every attempt's cost, including refusals and unparseable answers.
+                spent += payload.get("total_cost_usd") or 0.0
+                if payload.get("is_error"):
+                    raise RuntimeError(str(payload.get("result"))[:200])
                 data = _extract_json(payload["result"])
                 rec.prob_malicious = float(data["is_malicious"])
                 vector = str(data.get("attack_vector", "")).lower()
@@ -110,7 +112,6 @@ def run_claude_cli(
                     + (usage.get("cache_read_input_tokens") or 0)
                 )
                 rec.output_tokens = usage.get("output_tokens")
-                rec.cost_usd = payload.get("total_cost_usd")
                 models = payload.get("modelUsage") or {}
                 if models:
                     ranked = sorted(
@@ -128,6 +129,7 @@ def run_claude_cli(
                 rec.error = f"{type(exc).__name__}: {exc}"
                 if attempt < max_retries:
                     time.sleep(2 * (attempt + 1))
+        rec.cost_usd = spent
         rec.latency_ms = (time.perf_counter() - start) * 1000
         out.append(rec)
         if sink is not None:
